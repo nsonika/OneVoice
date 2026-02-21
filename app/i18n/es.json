@@ -1,0 +1,9 @@
+{
+  "home": {
+    "title": "Bienvenido",
+    "subtitle": "Este texto fue traducido por Lingo.dev",
+    "switchToEs": "Cambiar a Espanol",
+    "switchToEn": "Cambiar a English"
+  },
+  "cta": "Comenzar"
+}

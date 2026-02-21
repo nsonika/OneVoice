@@ -1,13 +1,23 @@
+import { useState } from "react";
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 
 import { HelloWave } from '@/components/hello-wave';
 import ParallaxScrollView from '@/components/parallax-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
+import i18n from '@/app/lib/i18n';
 
 export default function HomeScreen() {
+  const [locale, setLocale] = useState(i18n.locale);
+
+  const toggleLocale = () => {
+    const next = locale === "en" ? "es" : "en";
+    i18n.locale = next;
+    setLocale(next);
+  };
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
@@ -18,8 +28,16 @@ export default function HomeScreen() {
         />
       }>
       <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
+        <ThemedText type="title">{i18n.t("home.title")}</ThemedText>
         <HelloWave />
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText>{i18n.t("home.subtitle")}</ThemedText>
+        <Pressable onPress={toggleLocale} style={styles.switchButton}>
+          <ThemedText type="link">
+            {locale === "en" ? i18n.t("home.switchToEs") : i18n.t("home.switchToEn")}
+          </ThemedText>
+        </Pressable>
       </ThemedView>
       <ThemedView style={styles.stepContainer}>
         <ThemedText type="subtitle">Step 1: Try it</ThemedText>
@@ -87,6 +105,9 @@ const styles = StyleSheet.create({
   stepContainer: {
     gap: 8,
     marginBottom: 8,
+  },
+  switchButton: {
+    paddingVertical: 6,
   },
   reactLogo: {
     height: 178,

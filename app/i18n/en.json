@@ -1,0 +1,9 @@
+{
+  "home": {
+    "title": "Welcome",
+    "subtitle": "This text is translated by Lingo.dev",
+    "switchToEs": "Switch to Espanol",
+    "switchToEn": "Switch to English"
+  },
+  "cta": "Get started"
+}
