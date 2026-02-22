@@ -1,12 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSession } from '@/app/lib/session';
 
-const LANGUAGES = ['English', 'Hindi', 'Tamil', 'Telugu'];
+const LANGUAGES = [
+  { label: 'English', value: 'en' },
+  { label: 'Hindi', value: 'hi' },
+  { label: 'Tamil', value: 'ta' },
+  { label: 'Telugu', value: 'te' },
+];
 
 export default function ProfileScreen() {
+  const { user, updateMe, signOut } = useSession();
   const [name, setName] = useState('Demo User');
-  const [preferredLanguage, setPreferredLanguage] = useState('English');
+  const [preferredLanguage, setPreferredLanguage] = useState('en');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    setName(user.name);
+    setPreferredLanguage(user.preferredLanguage);
+  }, [user]);
+
+  async function handleSave() {
+    try {
+      setSaving(true);
+      setMessage('');
+      await updateMe({ name: name.trim(), preferredLanguage });
+      setMessage('Saved');
+    } catch (e: any) {
+      if (e?.response?.status === 401) signOut();
+      setMessage(e?.response?.data?.error || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -21,19 +50,20 @@ export default function ProfileScreen() {
         <View style={styles.languageWrap}>
           {LANGUAGES.map((lang) => (
             <Pressable
-              key={lang}
-              onPress={() => setPreferredLanguage(lang)}
-              style={[styles.chip, preferredLanguage === lang && styles.chipActive]}>
-              <Text style={[styles.chipText, preferredLanguage === lang && styles.chipTextActive]}>
-                {lang}
+              key={lang.value}
+              onPress={() => setPreferredLanguage(lang.value)}
+              style={[styles.chip, preferredLanguage === lang.value && styles.chipActive]}>
+              <Text style={[styles.chipText, preferredLanguage === lang.value && styles.chipTextActive]}>
+                {lang.label}
               </Text>
             </Pressable>
           ))}
         </View>
 
-        <Pressable style={styles.saveBtn}>
-          <Text style={styles.saveText}>Save preferences</Text>
+        <Pressable style={styles.saveBtn} onPress={handleSave}>
+          <Text style={styles.saveText}>{saving ? 'Saving...' : 'Save preferences'}</Text>
         </Pressable>
+        {message ? <Text style={styles.message}>{message}</Text> : null}
       </View>
     </SafeAreaView>
   );
@@ -106,5 +136,10 @@ const styles = StyleSheet.create({
   saveText: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  message: {
+    marginTop: 8,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });

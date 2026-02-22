@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { api } from '@/app/lib/api';
+import { useSession } from '@/app/lib/session';
 
 type ChatItem = {
   id: string;
@@ -12,29 +14,40 @@ type ChatItem = {
   unread: number;
 };
 
-const INITIAL_CHATS: ChatItem[] = [
-  {
-    id: '1',
-    name: 'Arjun',
-    language: 'Hindi',
-    lastOriginal: 'Mujhe coffee chahiye',
-    lastTranslated: 'I want coffee',
-    unread: 2,
-  },
-  {
-    id: '2',
-    name: 'Keerthi',
-    language: 'Tamil',
-    lastOriginal: 'Meeting 5 minute late',
-    lastTranslated: 'Meeting 5 nimidam late',
-    unread: 0,
-  },
-];
-
 export default function ChatsScreen() {
   const router = useRouter();
-  const [language] = useState('English');
-  const chats = useMemo(() => INITIAL_CHATS, []);
+  const { user, signOut } = useSession();
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadChats = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const { data } = await api.get('/conversations');
+      const mapped: ChatItem[] = data.map((conv: any) => {
+        const peer = conv.members?.map((m: any) => m.user).find((u: any) => u.id !== user.id);
+        const last = conv.messages?.[0];
+        return {
+          id: conv.id,
+          name: peer?.name || 'Unknown',
+          language: peer?.preferredLanguage || '-',
+          lastOriginal: last?.originalText || 'No messages yet',
+          lastTranslated: last?.translatedText || 'Start chatting',
+          unread: 0,
+        };
+      });
+      setChats(mapped);
+    } catch (e: any) {
+      if (e?.response?.status === 401) signOut();
+    } finally {
+      setLoading(false);
+    }
+  }, [signOut, user]);
+
+  useEffect(() => {
+    loadChats();
+  }, [loadChats]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -42,12 +55,15 @@ export default function ChatsScreen() {
         <Text style={styles.title}>OneVoice</Text>
         <Text style={styles.subtitle}>Speak any language, be understood instantly</Text>
         <View style={styles.languagePill}>
-          <Text style={styles.languageLabel}>Your language: {language}</Text>
+          <Text style={styles.languageLabel}>Your language: {user?.preferredLanguage || '-'}</Text>
         </View>
       </View>
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent chats</Text>
+        <Pressable onPress={loadChats}>
+          <Text style={styles.refresh}>{loading ? 'Loading...' : 'Refresh'}</Text>
+        </Pressable>
       </View>
 
       {chats.map((chat) => (
@@ -57,7 +73,7 @@ export default function ChatsScreen() {
           onPress={() =>
             router.push({
               pathname: '/chat/[id]',
-              params: { id: chat.id, name: chat.name, language: chat.language },
+              params: { id: chat.id, name: chat.name, language: chat.language, peerName: chat.name },
             })
           }>
           <View style={styles.chatRow}>
@@ -73,6 +89,7 @@ export default function ChatsScreen() {
           ) : null}
         </Pressable>
       ))}
+      {!chats.length && !loading ? <Text style={styles.empty}>No conversations yet.</Text> : null}
     </SafeAreaView>
   );
 }
@@ -114,6 +131,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
   },
   sectionTitle: {
@@ -164,5 +184,14 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '700',
+  },
+  refresh: {
+    color: '#0f766e',
+    fontWeight: '700',
+  },
+  empty: {
+    marginTop: 12,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });

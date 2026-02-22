@@ -1,12 +1,21 @@
-import { translate as googleTranslate } from "@vitalets/google-translate-api";
+import { LingoDotDevEngine } from "lingo.dev/sdk";
+import { config } from "../config.js";
+
+const lingoEngine = config.lingoApiKey
+  ? new LingoDotDevEngine({
+      apiKey: config.lingoApiKey
+    })
+  : null;
 
 export async function translateText(text, targetLanguage, sourceLanguage = "auto") {
   if (!text?.trim()) return "";
   if (sourceLanguage === targetLanguage) return text;
+  if (!lingoEngine) {
+    throw new Error("LINGO_API_KEY is not configured");
+  }
 
-  const result = await googleTranslate(text, {
-    from: sourceLanguage || "auto",
-    to: targetLanguage
+  return lingoEngine.localizeText(text, {
+    sourceLocale: sourceLanguage === "auto" ? null : sourceLanguage,
+    targetLocale: targetLanguage
   });
-  return result.text;
 }

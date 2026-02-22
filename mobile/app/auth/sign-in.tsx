@@ -2,15 +2,24 @@ import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSession } from '@/app/lib/session';
 
 export default function SignInScreen() {
   const router = useRouter();
+  const { signIn, loading } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
-  function handleSignIn() {
+  async function handleSignIn() {
     if (!email.trim() || !password.trim()) return;
-    router.replace('/(tabs)');
+    try {
+      setError('');
+      await signIn(email.trim(), password);
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Sign in failed');
+    }
   }
 
   return (
@@ -44,8 +53,9 @@ export default function SignInScreen() {
         />
 
         <Pressable style={styles.cta} onPress={handleSignIn}>
-          <Text style={styles.ctaText}>Sign in</Text>
+          <Text style={styles.ctaText}>{loading ? 'Signing in...' : 'Sign in'}</Text>
         </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Link href="/auth/sign-up" asChild>
           <Pressable style={styles.linkWrap}>
@@ -126,5 +136,10 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#0f766e',
     fontWeight: '700',
+  },
+  error: {
+    marginTop: 4,
+    color: '#b91c1c',
+    fontSize: 12,
   },
 });

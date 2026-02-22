@@ -1,37 +1,83 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { api } from '@/app/lib/api';
+import { useSession } from '@/app/lib/session';
 
 type Contact = {
   id: string;
+  userId: string;
   name: string;
   email: string;
   language: string;
 };
 
-const INITIAL_CONTACTS: Contact[] = [
-  { id: 'c1', name: 'Arjun', email: 'arjun@example.com', language: 'Hindi' },
-  { id: 'c2', name: 'Keerthi', email: 'keerthi@example.com', language: 'Tamil' },
-];
-
 export default function ContactsScreen() {
   const router = useRouter();
+  const { signOut } = useSession();
   const [email, setEmail] = useState('');
-  const [contacts, setContacts] = useState<Contact[]>(INITIAL_CONTACTS);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
   const list = useMemo(() => contacts, [contacts]);
 
-  function handleAddContact() {
-    if (!email.trim()) return;
-    const handle = email.split('@')[0] || 'New Contact';
-    const next: Contact = {
-      id: String(Date.now()),
-      name: handle.charAt(0).toUpperCase() + handle.slice(1),
-      email,
-      language: 'English',
-    };
-    setContacts((prev) => [next, ...prev]);
-    setEmail('');
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/contacts');
+      const mapped: Contact[] = data.map((item: any) => ({
+        id: item.id,
+        userId: item.contactUser.id,
+        name: item.alias || item.contactUser.name,
+        email: item.contactUser.email,
+        language: item.contactUser.preferredLanguage,
+      }));
+      setContacts(mapped);
+    } catch (e: any) {
+      if (e?.response?.status === 401) signOut();
+      setError(e?.response?.data?.error || 'Failed to load contacts');
+    } finally {
+      setLoading(false);
+    }
+  }, [signOut]);
+
+  useEffect(() => {
+    loadContacts();
+  }, [loadContacts]);
+
+  async function handleAddContact() {
+    if (!email.trim()) {
+      setError('Enter an email first');
+      return;
+    }
+    try {
+      setStatus('Sending request...');
+      setError('');
+      setLoading(true);
+      await api.post('/contacts', { email: email.trim() });
+      setEmail('');
+      setStatus('Contact added');
+      await loadContacts();
+    } catch (e: any) {
+      setStatus('');
+      setError(e?.response?.data?.error || 'Failed to add contact');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleOpenContact(contact: Contact) {
+    try {
+      const { data } = await api.post('/conversations/direct', { contactUserId: contact.userId });
+      router.push({
+        pathname: '/chat/[id]',
+        params: { id: data.id, name: contact.name, language: contact.language, peerName: contact.name },
+      });
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Failed to open conversation');
+    }
   }
 
   return (
@@ -50,20 +96,17 @@ export default function ContactsScreen() {
           style={styles.input}
         />
         <Pressable style={styles.addButton} onPress={handleAddContact}>
-          <Text style={styles.addText}>Add contact</Text>
+          <Text style={styles.addText}>{loading ? 'Adding...' : 'Add contact'}</Text>
         </Pressable>
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
 
       {list.map((contact) => (
         <Pressable
           key={contact.id}
           style={styles.contactCard}
-          onPress={() =>
-            router.push({
-              pathname: '/chat/[id]',
-              params: { id: contact.id, name: contact.name, language: contact.language },
-            })
-          }>
+          onPress={() => handleOpenContact(contact)}>
           <View style={styles.row}>
             <Text style={styles.name}>{contact.name}</Text>
             <Text style={styles.lang}>{contact.language}</Text>
@@ -71,6 +114,8 @@ export default function ContactsScreen() {
           <Text style={styles.email}>{contact.email}</Text>
         </Pressable>
       ))}
+      {loading ? <Text style={styles.meta}>Loading...</Text> : null}
+      {!loading && !list.length ? <Text style={styles.meta}>No contacts yet.</Text> : null}
     </SafeAreaView>
   );
 }
@@ -147,5 +192,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: '#6b7280',
     fontSize: 13,
+  },
+  meta: {
+    textAlign: 'center',
+    color: '#6b7280',
+    marginTop: 8,
+  },
+  status: {
+    textAlign: 'center',
+    color: '#0f766e',
+    marginTop: 8,
+  },
+  error: {
+    textAlign: 'center',
+    color: '#b91c1c',
+    marginTop: 8,
   },
 });

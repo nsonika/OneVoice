@@ -15,6 +15,14 @@ import { textToSpeechBase64 } from "./services/tts.js";
 const app = express();
 app.use(cors({ origin: config.clientOrigin }));
 app.use(express.json({ limit: "20mb" }));
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - startedAt;
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${ms}ms)`);
+  });
+  next();
+});
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

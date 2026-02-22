@@ -1,5 +1,7 @@
 import { Redirect } from 'expo-router';
+import { useSession } from '@/app/lib/session';
 
 export default function EntryScreen() {
-  return <Redirect href="/auth/sign-in" />;
+  const { token } = useSession();
+  return <Redirect href={token ? '/(tabs)' : '/auth/sign-in'} />;
 }

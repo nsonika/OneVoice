@@ -1,70 +1,128 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
+import { api } from '@/app/lib/api';
+import { getSocket } from '@/app/lib/socket';
+import { useSession } from '@/app/lib/session';
 
 type ChatMessage = {
   id: string;
   fromMe: boolean;
+  senderId: string;
   original: string;
   translated: string;
   kind: 'text' | 'voice';
+  targetLanguage?: string;
 };
 
-const STARTER_MESSAGES: ChatMessage[] = [
-  {
-    id: 'm1',
-    fromMe: false,
-    original: 'Mujhe coffee chahiye',
-    translated: 'I want coffee',
-    kind: 'text',
-  },
-  {
-    id: 'm2',
-    fromMe: true,
-    original: 'Sure, I can get one.',
-    translated: 'Haan, main le aata hoon.',
-    kind: 'text',
-  },
-];
-
 export default function ChatRoomScreen() {
+  const { user, signOut } = useSession();
+  const socket = useMemo(() => getSocket(), []);
   const params = useLocalSearchParams<{ id: string; name?: string; language?: string }>();
+  const conversationId = String(params.id || '');
   const [input, setInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(STARTER_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [error, setError] = useState('');
 
-  const roomName = useMemo(() => params.name || `Room ${params.id}`, [params.id, params.name]);
+  const roomName = useMemo(() => params.name || `Chat ${params.id}`, [params.id, params.name]);
   const peerLanguage = useMemo(() => params.language || 'Unknown', [params.language]);
 
-  function handleSend() {
-    if (!input.trim()) return;
+  const loadMessages = useCallback(async () => {
+    if (!user || !conversationId) return;
+    try {
+      const { data } = await api.get(`/conversations/${conversationId}/messages`);
+      const mapped: ChatMessage[] = data
+        .filter((m: any) => m.targetLanguage === user.preferredLanguage)
+        .map((m: any) => ({
+          id: m.id,
+          fromMe: m.senderId === user.id,
+          senderId: m.senderId,
+          original: m.originalText,
+          translated: m.translatedText,
+          kind: m.kind === 'VOICE' ? 'voice' : 'text',
+          targetLanguage: m.targetLanguage,
+        }));
+      setMessages(mapped);
+    } catch (e: any) {
+      if (e?.response?.status === 401) signOut();
+      setError(e?.response?.data?.error || 'Failed to load messages');
+    }
+  }, [conversationId, signOut, user]);
 
-    const next: ChatMessage = {
-      id: String(Date.now()),
-      fromMe: true,
-      original: input,
-      translated: `[Translated preview] ${input}`,
-      kind: 'text',
+  useEffect(() => {
+    if (!user || !conversationId) return;
+
+    loadMessages();
+    socket.emit('joinConversation', { conversationId, userId: user.id });
+
+    const onReceiveText = (msg: any) => {
+      if (msg.conversationId !== conversationId) return;
+      if (msg.targetLanguage !== user.preferredLanguage) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: msg.id,
+          fromMe: msg.senderId === user.id,
+          senderId: msg.senderId,
+          original: msg.original,
+          translated: msg.translated,
+          kind: 'text',
+          targetLanguage: msg.targetLanguage,
+        },
+      ]);
     };
-    setMessages((prev) => [...prev, next]);
+
+    const onReceiveVoice = (msg: any) => {
+      if (msg.conversationId !== conversationId) return;
+      if (msg.targetLanguage !== user.preferredLanguage) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: msg.id,
+          fromMe: msg.senderId === user.id,
+          senderId: msg.senderId,
+          original: msg.original,
+          translated: msg.translated,
+          kind: 'voice',
+          targetLanguage: msg.targetLanguage,
+        },
+      ]);
+    };
+
+    socket.on('receiveMessage', onReceiveText);
+    socket.on('receiveVoiceMessage', onReceiveVoice);
+
+    return () => {
+      socket.off('receiveMessage', onReceiveText);
+      socket.off('receiveVoiceMessage', onReceiveVoice);
+    };
+  }, [conversationId, loadMessages, socket, user]);
+
+  function handleSend() {
+    if (!input.trim() || !user) return;
+
+    socket.emit('sendMessage', {
+      conversationId,
+      senderId: user.id,
+      text: input,
+    });
     setInput('');
   }
 
   function handleVoiceToggle() {
+    if (!user) return;
     if (!isRecording) {
       setIsRecording(true);
       return;
     }
 
-    const voiceMessage: ChatMessage = {
-      id: String(Date.now()),
-      fromMe: true,
-      original: '[Voice] Mujhe coffee chahiye',
-      translated: '[Voice] I want coffee',
-      kind: 'voice',
-    };
-    setMessages((prev) => [...prev, voiceMessage]);
+    socket.emit('sendVoiceMessage', {
+      conversationId,
+      senderId: user.id,
+      audioBase64: '',
+    });
     setIsRecording(false);
   }
 
@@ -106,6 +164,7 @@ export default function ChatRoomScreen() {
           <Text style={styles.micText}>{isRecording ? 'Stop' : 'Mic'}</Text>
         </Pressable>
       </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
     </SafeAreaView>
   );
 }
@@ -214,5 +273,11 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontSize: 12,
     fontWeight: '700',
+  },
+  error: {
+    color: '#b91c1c',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 6,
   },
 });

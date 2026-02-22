@@ -2,19 +2,38 @@ import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSession } from '@/app/lib/session';
 
-const LANGUAGES = ['English', 'Hindi', 'Tamil', 'Telugu'];
+const LANGUAGES = [
+  { label: 'English', value: 'en' },
+  { label: 'Hindi', value: 'hi' },
+  { label: 'Tamil', value: 'ta' },
+  { label: 'Telugu', value: 'te' },
+];
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const { signUp, loading } = useSession();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [language, setLanguage] = useState('English');
+  const [language, setLanguage] = useState('en');
+  const [error, setError] = useState('');
 
-  function handleCreateAccount() {
+  async function handleCreateAccount() {
     if (!name.trim() || !email.trim() || !password.trim()) return;
-    router.replace('/(tabs)');
+    try {
+      setError('');
+      await signUp({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        preferredLanguage: language,
+      });
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Sign up failed');
+    }
   }
 
   return (
@@ -58,17 +77,20 @@ export default function SignUpScreen() {
         <View style={styles.langWrap}>
           {LANGUAGES.map((item) => (
             <Pressable
-              key={item}
-              onPress={() => setLanguage(item)}
-              style={[styles.langChip, item === language && styles.langChipActive]}>
-              <Text style={[styles.langText, item === language && styles.langTextActive]}>{item}</Text>
+              key={item.value}
+              onPress={() => setLanguage(item.value)}
+              style={[styles.langChip, item.value === language && styles.langChipActive]}>
+              <Text style={[styles.langText, item.value === language && styles.langTextActive]}>
+                {item.label}
+              </Text>
             </Pressable>
           ))}
         </View>
 
         <Pressable style={styles.cta} onPress={handleCreateAccount}>
-          <Text style={styles.ctaText}>Create account</Text>
+          <Text style={styles.ctaText}>{loading ? 'Creating...' : 'Create account'}</Text>
         </Pressable>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Link href="/auth/sign-in" asChild>
           <Pressable style={styles.linkWrap}>
@@ -168,5 +190,10 @@ const styles = StyleSheet.create({
   linkText: {
     color: '#0f766e',
     fontWeight: '700',
+  },
+  error: {
+    marginTop: 4,
+    color: '#b91c1c',
+    fontSize: 12,
   },
 });
