@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '@/app/lib/api';
@@ -17,10 +17,12 @@ export default function ContactsScreen() {
   const router = useRouter();
   const { signOut } = useSession();
   const [email, setEmail] = useState('');
+  const [groupName, setGroupName] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const list = useMemo(() => contacts, [contacts]);
 
   const loadContacts = useCallback(async () => {
@@ -80,6 +82,60 @@ export default function ContactsScreen() {
     }
   }
 
+  function toggleSelection(userId: string) {
+    setSelectedUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  }
+
+  async function handleContactPress(contact: Contact, e?: any) {
+    const isCtrlSelect = Platform.OS === 'web' && (e?.nativeEvent?.ctrlKey || e?.nativeEvent?.metaKey);
+    const inSelectionMode = selectedUserIds.length > 0;
+    if (isCtrlSelect || inSelectionMode) {
+      toggleSelection(contact.userId);
+      return;
+    }
+    await handleOpenContact(contact);
+  }
+
+  async function handleCreateGroup() {
+    if (!groupName.trim()) {
+      setError('Enter group name');
+      return;
+    }
+    if (selectedUserIds.length < 1) {
+      setError('Select at least 1 contact');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      setStatus('Creating group...');
+      const { data } = await api.post('/conversations/group', {
+        name: groupName.trim(),
+        memberUserIds: selectedUserIds,
+      });
+
+      setSelectedUserIds([]);
+      setGroupName('');
+      setStatus('Group created');
+
+      router.push({
+        pathname: '/chat/[id]',
+        params: {
+          id: data.id,
+          name: data.name || 'Group',
+          language: 'group',
+          peerName: data.name || 'Group',
+        },
+      });
+    } catch (e: any) {
+      setStatus('');
+      setError(e?.response?.data?.error || 'Failed to create group');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Contacts</Text>
@@ -102,11 +158,31 @@ export default function ContactsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
 
+      <View style={styles.groupCard}>
+        <Text style={styles.groupTitle}>Create group</Text>
+        <Text style={styles.groupHint}>Web: Ctrl/Cmd + click contacts to select members</Text>
+        <TextInput
+          value={groupName}
+          onChangeText={setGroupName}
+          placeholder="Team sync"
+          style={styles.input}
+        />
+        <Text style={styles.groupMeta}>Selected: {selectedUserIds.length}</Text>
+        <View style={styles.groupActions}>
+          <Pressable style={styles.secondaryButton} onPress={() => setSelectedUserIds([])}>
+            <Text style={styles.secondaryText}>Clear</Text>
+          </Pressable>
+          <Pressable style={styles.addButton} onPress={handleCreateGroup}>
+            <Text style={styles.addText}>{loading ? 'Creating...' : 'Create group'}</Text>
+          </Pressable>
+        </View>
+      </View>
+
       {list.map((contact) => (
         <Pressable
           key={contact.id}
-          style={styles.contactCard}
-          onPress={() => handleOpenContact(contact)}>
+          style={[styles.contactCard, selectedUserIds.includes(contact.userId) && styles.contactCardSelected]}
+          onPress={(e) => handleContactPress(contact, e)}>
           <View style={styles.row}>
             <Text style={styles.name}>{contact.name}</Text>
             <Text style={styles.lang}>{contact.language}</Text>
@@ -141,7 +217,45 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 14,
     padding: 14,
-    marginBottom: 18,
+    marginBottom: 12,
+  },
+  groupCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  groupTitle: {
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  groupHint: {
+    marginTop: 6,
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  groupMeta: {
+    marginTop: 6,
+    color: '#0f766e',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  groupActions: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  secondaryText: {
+    color: '#374151',
+    fontWeight: '700',
   },
   cardLabel: {
     color: '#6b7280',
@@ -172,6 +286,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
+  },
+  contactCardSelected: {
+    borderWidth: 2,
+    borderColor: '#0f766e',
+    backgroundColor: '#f0fdfa',
   },
   row: {
     flexDirection: 'row',

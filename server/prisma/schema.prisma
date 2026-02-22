@@ -9,6 +9,12 @@ datasource db {
 
 enum ConversationType {
   DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
 }
 
 enum MessageKind {
@@ -26,6 +32,7 @@ model User {
   contactsOwned      Contact[]            @relation("ContactOwner")
   contactsAsUser     Contact[]            @relation("ContactUser")
   conversationMember ConversationMember[]
+  createdGroups      Conversation[]       @relation("ConversationCreator")
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 }
@@ -46,18 +53,23 @@ model Contact {
 }
 
 model Conversation {
-  id        String               @id @default(cuid())
-  type      ConversationType     @default(DIRECT)
-  members   ConversationMember[]
-  messages  Message[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  id             String               @id @default(cuid())
+  type           ConversationType     @default(DIRECT)
+  name           String?
+  groupAvatarUrl String?
+  createdBy      String?
+  createdByUser  User?                @relation("ConversationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  members        ConversationMember[]
+  messages       Message[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 }
 
 model ConversationMember {
   id             String       @id @default(cuid())
   conversationId String
   userId         String
+  role           MemberRole   @default(MEMBER)
   createdAt      DateTime     @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

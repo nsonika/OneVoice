@@ -12,6 +12,7 @@ type ChatItem = {
   lastOriginal: string;
   lastTranslated: string;
   unread: number;
+  type: 'DIRECT' | 'GROUP';
 };
 
 export default function ChatsScreen() {
@@ -28,13 +29,16 @@ export default function ChatsScreen() {
       const mapped: ChatItem[] = data.map((conv: any) => {
         const peer = conv.members?.map((m: any) => m.user).find((u: any) => u.id !== user.id);
         const last = conv.messages?.[0];
+        const isGroup = conv.type === 'GROUP';
+        const groupMemberCount = (conv.members || []).length;
         return {
           id: conv.id,
-          name: peer?.name || 'Unknown',
-          language: peer?.preferredLanguage || '-',
+          name: isGroup ? conv.name || `Group (${groupMemberCount})` : peer?.name || 'Unknown',
+          language: isGroup ? `group · ${groupMemberCount}` : peer?.preferredLanguage || '-',
           lastOriginal: last?.originalText || 'No messages yet',
           lastTranslated: last?.translatedText || 'Start chatting',
           unread: 0,
+          type: isGroup ? 'GROUP' : 'DIRECT',
         };
       });
       setChats(mapped);

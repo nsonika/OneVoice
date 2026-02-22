@@ -169,13 +169,182 @@ app.post("/conversations/direct", requireAuth, async (req, res) => {
     data: {
       type: "DIRECT",
       members: {
-        create: [{ userId: req.auth.userId }, { userId: contactUserId }]
+        create: [{ userId: req.auth.userId, role: "MEMBER" }, { userId: contactUserId, role: "MEMBER" }]
       }
     },
     include: { members: { include: { user: true } } }
   });
 
   return res.status(201).json(conversation);
+});
+
+app.post("/conversations/group", requireAuth, async (req, res) => {
+  const { name, memberUserIds } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: "name is required" });
+  if (!Array.isArray(memberUserIds)) {
+    return res.status(400).json({ error: "memberUserIds must be an array" });
+  }
+
+  const uniqueMemberIds = [...new Set(memberUserIds.filter(Boolean))].filter(
+    (id) => id !== req.auth.userId
+  );
+  if (uniqueMemberIds.length < 1) {
+    return res.status(400).json({ error: "At least 1 other member is required" });
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: uniqueMemberIds } },
+    select: { id: true }
+  });
+  if (users.length !== uniqueMemberIds.length) {
+    return res.status(400).json({ error: "Some memberUserIds are invalid" });
+  }
+
+  const conversation = await prisma.conversation.create({
+    data: {
+      type: "GROUP",
+      name: name.trim(),
+      createdBy: req.auth.userId,
+      members: {
+        create: [
+          { userId: req.auth.userId, role: "ADMIN" },
+          ...uniqueMemberIds.map((userId) => ({ userId, role: "MEMBER" }))
+        ]
+      }
+    },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, preferredLanguage: true }
+          }
+        }
+      }
+    }
+  });
+
+  return res.status(201).json(conversation);
+});
+
+app.patch("/conversations/:conversationId/group", requireAuth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { name, groupAvatarUrl } = req.body;
+
+    const isMember = await isConversationMember(conversationId, req.auth.userId);
+    if (!isMember) return res.status(403).json({ error: "Not a member of this conversation" });
+
+    const isAdmin = await isGroupAdmin(conversationId, req.auth.userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin permission required" });
+
+    const conversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        ...(typeof name === "string" ? { name: name.trim() || null } : {}),
+        ...(typeof groupAvatarUrl === "string" ? { groupAvatarUrl: groupAvatarUrl.trim() || null } : {})
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, preferredLanguage: true }
+            }
+          }
+        }
+      }
+    });
+
+    return res.json(conversation);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Failed to update group" });
+  }
+});
+
+app.get("/conversations/:conversationId/members", requireAuth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const isMember = await isConversationMember(conversationId, req.auth.userId);
+    if (!isMember) return res.status(403).json({ error: "Not a member of this conversation" });
+
+    const members = await prisma.conversationMember.findMany({
+      where: { conversationId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, preferredLanguage: true }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    });
+    return res.json(members);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Failed to list members" });
+  }
+});
+
+app.post("/conversations/:conversationId/members", requireAuth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+
+    const isMember = await isConversationMember(conversationId, req.auth.userId);
+    if (!isMember) return res.status(403).json({ error: "Not a member of this conversation" });
+
+    const isAdmin = await isGroupAdmin(conversationId, req.auth.userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin permission required" });
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const member = await prisma.conversationMember.upsert({
+      where: {
+        conversationId_userId: { conversationId, userId }
+      },
+      create: {
+        conversationId,
+        userId,
+        role: "MEMBER"
+      },
+      update: {}
+    });
+
+    return res.status(201).json(member);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Failed to add member" });
+  }
+});
+
+app.delete("/conversations/:conversationId/members/:userId", requireAuth, async (req, res) => {
+  try {
+    const { conversationId, userId } = req.params;
+    const isMember = await isConversationMember(conversationId, req.auth.userId);
+    if (!isMember) return res.status(403).json({ error: "Not a member of this conversation" });
+
+    const isAdmin = await isGroupAdmin(conversationId, req.auth.userId);
+    if (!isAdmin) return res.status(403).json({ error: "Admin permission required" });
+
+    const targetMember = await prisma.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId } }
+    });
+    if (!targetMember) return res.status(404).json({ error: "Member not found" });
+
+    if (targetMember.role === "ADMIN") {
+      const adminCount = await prisma.conversationMember.count({
+        where: { conversationId, role: "ADMIN" }
+      });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: "Cannot remove last admin" });
+      }
+    }
+
+    await prisma.conversationMember.delete({
+      where: { conversationId_userId: { conversationId, userId } }
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Failed to remove member" });
+  }
 });
 
 app.get("/conversations", requireAuth, async (req, res) => {
@@ -362,6 +531,20 @@ async function isConversationMember(conversationId, userId) {
 async function assertMember(conversationId, userId) {
   const isMember = await isConversationMember(conversationId, userId);
   if (!isMember) throw new Error("User is not a member of this conversation");
+}
+
+async function isGroupAdmin(conversationId, userId) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { type: true }
+  });
+  if (!conversation || conversation.type !== "GROUP") return false;
+
+  const member = await prisma.conversationMember.findUnique({
+    where: { conversationId_userId: { conversationId, userId } },
+    select: { role: true }
+  });
+  return member?.role === "ADMIN";
 }
 
 async function getConversationMembers(conversationId) {

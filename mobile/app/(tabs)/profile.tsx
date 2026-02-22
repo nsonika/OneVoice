@@ -8,6 +8,7 @@ const LANGUAGES = [
   { label: 'Hindi', value: 'hi' },
   { label: 'Tamil', value: 'ta' },
   { label: 'Telugu', value: 'te' },
+  { label: 'Kannada', value: 'kn' },
 ];
 
 export default function ProfileScreen() {
