@@ -75,7 +75,8 @@ model Message {
   translatedText String
   sourceLanguage String
   targetLanguage String
-  audioUrl       String?
+  originalAudioUrl   String?
+  translatedAudioUrl String?
   createdAt      DateTime    @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

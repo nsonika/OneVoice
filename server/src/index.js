@@ -7,10 +7,10 @@ import { config } from "./config.js";
 import { prisma } from "./db.js";
 import { requireAuth, signToken } from "./auth.js";
 import { detectLanguage } from "./services/language.js";
-import { normalizeHinglish } from "./services/hinglish.js";
 import { translateText } from "./services/translator.js";
 import { speechToText } from "./services/stt.js";
 import { textToSpeechBase64 } from "./services/tts.js";
+import { uploadAudioBase64 } from "./services/storage.js";
 
 const app = express();
 app.use(cors({ origin: config.clientOrigin }));
@@ -213,6 +213,36 @@ app.get("/conversations/:conversationId/messages", requireAuth, async (req, res)
   return res.json(messages);
 });
 
+app.post("/conversations/:conversationId/voice", requireAuth, async (req, res) => {
+  const traceId = makeTraceId();
+  try {
+    const { conversationId } = req.params;
+    const { audioBase64 } = req.body;
+    logVoice(traceId, "http_incoming", {
+      conversationId,
+      userId: req.auth?.userId,
+      hasAudio: Boolean(audioBase64),
+      audioLength: audioBase64?.length || 0
+    });
+    if (!audioBase64?.trim()) {
+      return res.status(400).json({ error: "audioBase64 is required" });
+    }
+
+    await assertMember(conversationId, req.auth.userId);
+    await processAndEmitVoiceMessage(conversationId, req.auth.userId, audioBase64, { traceId, source: "http" });
+    return res.status(201).json({ ok: true, traceId });
+  } catch (error) {
+    console.error("[voice-route] failed", {
+      traceId,
+      conversationId: req.params.conversationId,
+      userId: req.auth?.userId,
+      message: error?.message,
+      stack: error?.stack
+    });
+    return res.status(400).json({ error: error.message || "Voice processing failed", traceId });
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: config.clientOrigin }
@@ -227,8 +257,19 @@ io.on("connection", (socket) => {
       socket.join(conversationId);
       socket.data.userId = userId;
       socket.data.conversationId = conversationId;
+      console.log("[socket] joinConversation ok", {
+        socketId: socket.id,
+        conversationId,
+        userId
+      });
       ack?.({ ok: true });
     } catch (error) {
+      console.error("[socket] joinConversation failed", {
+        socketId: socket.id,
+        conversationId,
+        userId,
+        message: error?.message
+      });
       ack?.({ ok: false, error: error.message || "joinConversation failed" });
     }
   });
@@ -244,11 +285,10 @@ io.on("connection", (socket) => {
       if (!sender) throw new Error("Sender not found");
 
       const sourceLanguage = detectLanguage(text, sender.preferredLanguage || "en");
-      const normalized = await normalizeHinglish(text);
 
       for (const recipient of members) {
         const translatedText = await translateText(
-          normalized,
+          text,
           recipient.preferredLanguage,
           sourceLanguage
         );
@@ -285,55 +325,27 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendVoiceMessage", async (payload, ack) => {
+    const traceId = makeTraceId();
     try {
       const { conversationId, senderId, audioBase64 } = payload;
+      logVoice(traceId, "socket_incoming", {
+        conversationId,
+        senderId,
+        hasAudio: Boolean(audioBase64),
+        audioLength: audioBase64?.length || 0
+      });
       await assertMember(conversationId, senderId);
-
-      const members = await getConversationMembers(conversationId);
-      const sender = members.find((m) => m.id === senderId);
-      if (!sender) throw new Error("Sender not found");
-
-      const stt = await speechToText(audioBase64, sender.preferredLanguage || "auto");
-      const sourceText = stt.text || "";
-      const sourceLanguage = stt.language || detectLanguage(sourceText, sender.preferredLanguage);
-
-      for (const recipient of members) {
-        const translatedText = await translateText(
-          sourceText,
-          recipient.preferredLanguage,
-          sourceLanguage
-        );
-        const ttsAudioBase64 = await textToSpeechBase64(translatedText, recipient.preferredLanguage);
-
-        const message = await prisma.message.create({
-          data: {
-            conversationId,
-            senderId,
-            kind: "VOICE",
-            originalText: sourceText,
-            translatedText,
-            sourceLanguage,
-            targetLanguage: recipient.preferredLanguage
-          }
-        });
-
-        io.to(conversationId).emit("receiveVoiceMessage", {
-          id: message.id,
-          conversationId,
-          senderId,
-          original: sourceText,
-          translated: translatedText,
-          sourceLanguage,
-          targetLanguage: recipient.preferredLanguage,
-          audioBase64: ttsAudioBase64,
-          createdAt: message.createdAt,
-          kind: "voice"
-        });
-      }
-
-      ack?.({ ok: true });
+      await processAndEmitVoiceMessage(conversationId, senderId, audioBase64, { traceId, source: "socket" });
+      ack?.({ ok: true, traceId });
     } catch (error) {
-      ack?.({ ok: false, error: error.message || "sendVoiceMessage failed" });
+      console.error("[voice-socket] failed", {
+        traceId,
+        conversationId: payload?.conversationId,
+        senderId: payload?.senderId,
+        message: error?.message,
+        stack: error?.stack
+      });
+      ack?.({ ok: false, error: error.message || "sendVoiceMessage failed", traceId });
     }
   });
 });
@@ -358,6 +370,152 @@ async function getConversationMembers(conversationId) {
     include: { user: true }
   });
   return members.map((m) => m.user);
+}
+
+async function processAndEmitVoiceMessage(conversationId, senderId, audioBase64, meta = {}) {
+  const traceId = meta.traceId || makeTraceId();
+  const members = await getConversationMembers(conversationId);
+  logVoice(traceId, "members_loaded", {
+    source: meta.source || "unknown",
+    conversationId,
+    senderId,
+    memberCount: members.length
+  });
+
+  const sender = members.find((m) => m.id === senderId);
+  if (!sender) throw new Error("Sender not found");
+
+  let originalAudioUrl = null;
+  try {
+    logVoice(traceId, "cloudinary_original_start", {});
+    originalAudioUrl = await uploadAudioBase64(audioBase64, `original_${conversationId}`);
+    logVoice(traceId, "cloudinary_original_done", {
+      hasOriginalAudioUrl: Boolean(originalAudioUrl)
+    });
+  } catch (error) {
+    throw new Error(`cloudinary-original: ${error.message}`);
+  }
+
+  let stt;
+  try {
+    logVoice(traceId, "stt_start", { languageHint: sender.preferredLanguage || "auto" });
+    stt = await speechToText(audioBase64, sender.preferredLanguage || "auto");
+    logVoice(traceId, "stt_done", {
+      transcriptLength: stt?.text?.length || 0,
+      language: stt?.language || null
+    });
+  } catch (error) {
+    throw new Error(`sarvam-stt: ${error.message}`);
+  }
+  const sourceText = stt.text || "";
+  const sourceLanguage = stt.language || detectLanguage(sourceText, sender.preferredLanguage);
+  logVoice(traceId, "source_ready", {
+    sourceLanguage,
+    sourceTextLength: sourceText.length
+  });
+
+  for (const recipient of members) {
+    let translatedText;
+    try {
+      logVoice(traceId, "translate_start", {
+        recipientId: recipient.id,
+        targetLanguage: recipient.preferredLanguage
+      });
+      translatedText = await translateText(
+        sourceText,
+        recipient.preferredLanguage,
+        sourceLanguage
+      );
+      logVoice(traceId, "translate_done", {
+        recipientId: recipient.id,
+        translatedLength: translatedText?.length || 0
+      });
+    } catch (error) {
+      throw new Error(`lingo-translate: ${error.message}`);
+    }
+
+    let ttsAudioBase64;
+    try {
+      logVoice(traceId, "tts_start", {
+        recipientId: recipient.id,
+        targetLanguage: recipient.preferredLanguage
+      });
+      ttsAudioBase64 = await textToSpeechBase64(translatedText, recipient.preferredLanguage);
+      logVoice(traceId, "tts_done", {
+        recipientId: recipient.id,
+        hasTtsAudio: Boolean(ttsAudioBase64),
+        ttsAudioLength: ttsAudioBase64?.length || 0
+      });
+    } catch (error) {
+      throw new Error(`sarvam-tts: ${error.message}`);
+    }
+
+    let translatedAudioUrl = null;
+    try {
+      logVoice(traceId, "cloudinary_translated_start", { recipientId: recipient.id });
+      translatedAudioUrl = await uploadAudioBase64(
+        ttsAudioBase64,
+        `translated_${conversationId}_${recipient.id}`
+      );
+      logVoice(traceId, "cloudinary_translated_done", {
+        recipientId: recipient.id,
+        hasTranslatedAudioUrl: Boolean(translatedAudioUrl)
+      });
+    } catch (error) {
+      throw new Error(`cloudinary-translated: ${error.message}`);
+    }
+
+    let message;
+    try {
+      message = await prisma.message.create({
+        data: {
+          conversationId,
+          senderId,
+          kind: "VOICE",
+          originalText: sourceText,
+          translatedText,
+          sourceLanguage,
+          targetLanguage: recipient.preferredLanguage,
+          originalAudioUrl,
+          translatedAudioUrl
+        }
+      });
+      logVoice(traceId, "db_save_done", {
+        recipientId: recipient.id,
+        messageId: message.id
+      });
+    } catch (error) {
+      throw new Error(`db-save: ${error.message}`);
+    }
+
+    logVoice(traceId, "socket_emit_voice", {
+      recipientId: recipient.id,
+      conversationId,
+      messageId: message.id
+    });
+    io.to(conversationId).emit("receiveVoiceMessage", {
+      id: message.id,
+      conversationId,
+      senderId,
+      original: sourceText,
+      translated: translatedText,
+      sourceLanguage,
+      targetLanguage: recipient.preferredLanguage,
+      audioBase64: ttsAudioBase64,
+      translatedAudioUrl,
+      originalAudioUrl,
+      createdAt: message.createdAt,
+      kind: "voice"
+    });
+  }
+}
+
+function makeTraceId() {
+  return `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logVoice(traceId, stage, payload = {}) {
+  console.log(`[voice][${traceId}] ${stage}`, payload);
 }
 
 function toSafeUser(user) {
