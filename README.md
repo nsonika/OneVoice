@@ -1,50 +1,45 @@
-# Welcome to your Expo app 👋
+# OneVoice
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+OneVoice is a real-time multilingual chat + voice translation app.
 
-## Get started
+## Monorepo Structure
 
-1. Install dependencies
+- `server` - Express + Socket.IO + Prisma + Postgres
+- `mobile` - React Native (Expo) app
 
-   ```bash
-   npm install
-   ```
+## MVP Demo Flow
 
-2. Start the app
+1. User A joins room with `hi` preferred language.
+2. User B joins room with `en` preferred language.
+3. User A sends: `Mujhe coffee chahiye`.
+4. User B receives translated text: `I want coffee`.
+5. Optional voice: record -> STT -> translate -> TTS payload.
 
-   ```bash
-   npx expo start
-   ```
+## Quick Start
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### 1) Start server
 
 ```bash
-npm run reset-project
+cd server
+npm install
+copy .env.example .env
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2) Start mobile app
 
-## Learn more
+```bash
+cd mobile
+npm install
+npm run start
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Then open Expo on Android/iOS and connect to the running server URL configured in `mobile/src/lib/socket.js`.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Notes
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Translation provider defaults to Google endpoint via `@vitalets/google-translate-api`.
+- Hinglish text can be normalized through LLM provider by setting `GROQ_API_KEY`.
+- Voice STT/TTS are pluggable service stubs; wire Whisper/Sarvam/ElevenLabs keys in env and service files.
