@@ -1,8 +1,10 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '@/app/lib/session';
+import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -24,45 +26,90 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.brand}>OneVoice</Text>
-        <Text style={styles.tagline}>Real-time multilingual conversation</Text>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Ionicons name="chatbubble-ellipses" size={40} color={Colors.light.tint} />
+            </View>
+            <Text style={styles.brand}>OneVoice</Text>
+            <Text style={styles.tagline}>Break language barriers instantly</Text>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.subtitle}>Use email for demo. It is faster than phone OTP setup.</Text>
+          <View style={styles.card}>
+            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.subtitle}>Sign in to continue your conversations</Text>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={styles.input}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Enter password"
-          secureTextEntry
-          style={styles.input}
-        />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  secureTextEntry
+                  style={styles.input}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
 
-        <Pressable style={styles.cta} onPress={handleSignIn}>
-          <Text style={styles.ctaText}>{loading ? 'Signing in...' : 'Sign in'}</Text>
-        </Pressable>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={16} color={Colors.light.error} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
 
-        <Link href="/auth/sign-up" asChild>
-          <Pressable style={styles.linkWrap}>
-            <Text style={styles.linkText}>New here? Create an account</Text>
-          </Pressable>
-        </Link>
-      </View>
+            <Pressable 
+              style={({ pressed }) => [
+                styles.cta,
+                pressed && styles.ctaPressed,
+                loading && styles.ctaDisabled
+              ]} 
+              onPress={handleSignIn}
+              disabled={loading}
+            >
+              <Text style={styles.ctaText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
+              {!loading && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />}
+            </Pressable>
+
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Don't have an account? </Text>
+              <Link href="/auth/sign-up" asChild>
+                <Pressable>
+                  <Text style={styles.linkText}>Create one</Text>
+                </Pressable>
+              </Link>
+            </View>
+          </View>
+          
+          <View style={styles.demoNotice}>
+            <Ionicons name="information-circle-outline" size={16} color={Colors.light.muted} />
+            <Text style={styles.demoText}>Demo mode: Use email for instant access</Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -70,76 +117,158 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    backgroundColor: Colors.light.background,
   },
-  hero: {
-    backgroundColor: '#0f766e',
-    borderRadius: 18,
-    padding: 16,
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 24,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
+    elevation: 4,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   brand: {
-    color: '#f8fafc',
-    fontWeight: '800',
-    fontSize: 28,
+    color: Colors.light.text,
+    fontWeight: '900',
+    fontSize: 32,
+    letterSpacing: -1,
   },
   tagline: {
-    color: '#ccfbf1',
-    marginTop: 6,
+    color: Colors.light.muted,
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '500',
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 32,
+    padding: 24,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
   },
   title: {
-    color: '#111827',
+    color: Colors.light.text,
     fontWeight: '800',
     fontSize: 24,
   },
   subtitle: {
-    marginTop: 8,
-    marginBottom: 14,
-    color: '#4b5563',
+    marginTop: 4,
+    marginBottom: 24,
+    color: Colors.light.muted,
+    fontSize: 15,
+  },
+  inputGroup: {
+    marginBottom: 20,
   },
   label: {
-    color: '#6b7280',
-    marginBottom: 6,
-    fontSize: 13,
+    color: Colors.light.text,
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: Colors.light.text,
   },
   cta: {
-    marginTop: 4,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    paddingVertical: 12,
+    marginTop: 10,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  ctaPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  ctaDisabled: {
+    backgroundColor: '#94a3b8',
   },
   ctaText: {
     color: '#ffffff',
     fontWeight: '700',
+    fontSize: 16,
   },
-  linkWrap: {
-    paddingVertical: 12,
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
     alignItems: 'center',
-    marginTop: 4,
+  },
+  footerText: {
+    color: Colors.light.muted,
+    fontSize: 14,
   },
   linkText: {
-    color: '#0f766e',
+    color: Colors.light.tint,
     fontWeight: '700',
+    fontSize: 14,
   },
-  error: {
-    marginTop: 4,
-    color: '#b91c1c',
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  demoNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 32,
+    gap: 6,
+  },
+  demoText: {
+    color: Colors.light.muted,
     fontSize: 12,
+    fontWeight: '500',
   },
 });

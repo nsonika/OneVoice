@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api } from '@/app/lib/api';
 import { getSocket } from '@/app/lib/socket';
 import { useSession } from '@/app/lib/session';
+import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 type ChatMessage = {
   id: string;
@@ -17,9 +19,12 @@ type ChatMessage = {
   originalAudioUrl?: string | null;
   translatedAudioUrl?: string | null;
   audioBase64?: string | null;
+  createdAt: string;
+  duration?: number | null;
 };
 
 export default function ChatRoomScreen() {
+  const router = useRouter();
   const { user, signOut } = useSession();
   const socket = useMemo(() => getSocket(), []);
   const params = useLocalSearchParams<{ id: string; name?: string; language?: string }>();
@@ -29,6 +34,9 @@ export default function ChatRoomScreen() {
   const [sendingVoice, setSendingVoice] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState('');
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const soundRef = useRef<any>(null);
+  const loadingDurationIdsRef = useRef<Set<string>>(new Set());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -53,6 +61,8 @@ export default function ChatRoomScreen() {
           originalAudioUrl: m.originalAudioUrl || null,
           translatedAudioUrl: m.translatedAudioUrl || m.audioUrl || null,
           audioBase64: null,
+          createdAt: m.createdAt,
+          duration: typeof m.duration === 'number' ? m.duration : null,
         }));
       console.log('[chat] loadMessages', {
         conversationId,
@@ -91,6 +101,7 @@ export default function ChatRoomScreen() {
           translated: msg.translated,
           kind: 'text',
           targetLanguage: msg.targetLanguage,
+          createdAt: msg.createdAt || new Date().toISOString(),
         },
       ]);
     };
@@ -118,6 +129,8 @@ export default function ChatRoomScreen() {
           originalAudioUrl: msg.originalAudioUrl || null,
           translatedAudioUrl: msg.translatedAudioUrl || msg.audioUrl || null,
           audioBase64: msg.audioBase64 || null,
+          createdAt: msg.createdAt || new Date().toISOString(),
+          duration: typeof msg.duration === 'number' ? msg.duration : null,
         },
       ]);
     };
@@ -142,7 +155,39 @@ export default function ChatRoomScreen() {
   }, [conversationId, loadMessages, socket, user]);
 
   useEffect(() => {
+    const pending = messages.filter(
+      (msg) =>
+        msg.kind === 'voice' &&
+        (!msg.duration || msg.duration <= 0) &&
+        !loadingDurationIdsRef.current.has(msg.id) &&
+        Boolean(resolveAudioSource(msg))
+    );
+
+    pending.forEach((msg) => {
+      loadingDurationIdsRef.current.add(msg.id);
+      const source = resolveAudioSource(msg);
+      if (!source) {
+        loadingDurationIdsRef.current.delete(msg.id);
+        return;
+      }
+      getAudioDurationSeconds(source)
+        .then((seconds) => {
+          setMessages((prev) =>
+            prev.map((item) => (item.id === msg.id ? { ...item, duration: seconds } : item))
+          );
+        })
+        .catch(() => {
+          // Keep duration unknown; UI will show fallback.
+        })
+        .finally(() => {
+          loadingDurationIdsRef.current.delete(msg.id);
+        });
+    });
+  }, [messages]);
+
+  useEffect(() => {
     return () => {
+      soundRef.current?.unloadAsync?.();
       mediaRecorderRef.current?.stop?.();
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
@@ -160,49 +205,108 @@ export default function ChatRoomScreen() {
   }
 
   async function handlePlayVoice(msg: ChatMessage) {
+    const msgId = String(msg.id);
+    const isCurrentlyPlaying = playingMessageId === msgId;
+    console.log('[audio] handlePlayVoice', { msgId, isCurrentlyPlaying, playingMessageId });
+
     try {
       setError('');
-      let source = msg.fromMe ? msg.originalAudioUrl || '' : msg.translatedAudioUrl || '';
-
-      if (!source && msg.audioBase64) {
-        source = msg.audioBase64.startsWith('data:')
-          ? msg.audioBase64
-          : `data:audio/wav;base64,${msg.audioBase64}`;
+      
+      // 1. Stop any existing playback
+      if (soundRef.current) {
+        console.log('[audio] stopping previous sound');
+        try {
+          if (Platform.OS === 'web' && typeof soundRef.current.pause === 'function') {
+            soundRef.current.pause();
+          } else if (typeof soundRef.current.stopAsync === 'function') {
+            await soundRef.current.stopAsync();
+            await soundRef.current.unloadAsync();
+          }
+        } catch (e) {
+          console.warn('[audio] error stopping previous', e);
+        }
+        soundRef.current = null;
       }
+
+      // 2. If we just wanted to stop the current one, we are done
+      if (isCurrentlyPlaying) {
+        setPlayingMessageId(null);
+        return;
+      }
+
+      // 3. Prepare source
+      let source = resolveAudioSource(msg) || '';
 
       if (!source) {
         setError('No audio found for this message');
+        setPlayingMessageId(null);
         return;
       }
 
-      if (Platform.OS === 'web') {
-        const audio = new Audio(source);
-        await audio.play();
-        return;
-      }
+      // 4. Start new playback
+      setPlayingMessageId(msgId);
 
-      // Prefer in-app playback via expo-av when available.
+      // Prefer expo-av
       try {
-        const av = await import('expo-av');
-        const { sound } = await av.Audio.Sound.createAsync({ uri: source });
+        const { Audio: ExpoAudio } = await import('expo-av');
+        
+        await ExpoAudio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+
+        const { sound } = await ExpoAudio.Sound.createAsync(
+          { uri: source },
+          { shouldPlay: true }
+        );
+        
+        soundRef.current = sound;
+        sound.setOnPlaybackStatusUpdate((status: any) => {
+          if (status.didJustFinish) {
+            console.log('[audio] finished mobile', msgId);
+            setPlayingMessageId((current) => {
+              if (current === msgId) return null;
+              return current;
+            });
+            sound.unloadAsync();
+            if (soundRef.current === sound) soundRef.current = null;
+          }
+          if (status.error) {
+            console.error('[audio] status error', status.error);
+            setPlayingMessageId((current) => (current === msgId ? null : current));
+            setError('Playback error');
+          }
+        });
+        
         await sound.playAsync();
         return;
-      } catch {
-        // fallback below
+      } catch (e) {
+        console.error('[audio] expo-av failed, trying HTML5 Audio', e);
+        
+        if (Platform.OS === 'web') {
+          const audio = new Audio(source);
+          soundRef.current = audio;
+          audio.onended = () => {
+            console.log('[audio] finished web', msgId);
+            setPlayingMessageId((current) => (current === msgId ? null : current));
+            if (soundRef.current === audio) soundRef.current = null;
+          };
+          audio.onerror = (err) => {
+            console.error('[audio] HTML5 Audio error', err);
+            setPlayingMessageId((current) => (current === msgId ? null : current));
+            setError('Failed to play audio');
+          };
+          await audio.play();
+        } else {
+          setPlayingMessageId(null);
+          throw e;
+        }
       }
-
-      if (!msg.translatedAudioUrl) {
-        setError('Install expo-av for in-app playback, or provide audioUrl for external playback.');
-        return;
-      }
-
-      const canOpen = await Linking.canOpenURL(msg.translatedAudioUrl);
-      if (!canOpen) {
-        setError('Cannot open audio URL on this device');
-        return;
-      }
-      await Linking.openURL(msg.translatedAudioUrl);
     } catch (e: any) {
+      console.error('[audio] handlePlayVoice fatal error', e);
+      setPlayingMessageId(null);
       setError(e?.message || 'Failed to play audio');
     }
   }
@@ -338,51 +442,209 @@ export default function ChatRoomScreen() {
     });
   }
 
+  function formatTime(isoString: string) {
+    if (!isoString) return '';
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '';
+    }
+  }
+
+  function formatDuration(seconds: number | null | undefined) {
+    if (!seconds || seconds <= 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  function resolveAudioSource(msg: ChatMessage) {
+    let source = msg.fromMe ? msg.originalAudioUrl || '' : msg.translatedAudioUrl || '';
+    if (!source && msg.audioBase64) {
+      source = msg.audioBase64.startsWith('data:')
+        ? msg.audioBase64
+        : `data:audio/wav;base64,${msg.audioBase64}`;
+    }
+    return source || '';
+  }
+
+  async function getAudioDurationSeconds(source: string): Promise<number> {
+    if (Platform.OS === 'web') {
+      const seconds = await new Promise<number>((resolve, reject) => {
+        const audio = new Audio();
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+          const duration = Number(audio.duration);
+          resolve(Number.isFinite(duration) && duration > 0 ? duration : 0);
+        };
+        audio.onerror = () => reject(new Error('Failed to load audio metadata'));
+        audio.src = source;
+      });
+      return seconds;
+    }
+
+    try {
+      const av = await import('expo-av');
+      const { sound, status } = await av.Audio.Sound.createAsync(
+        { uri: source },
+        { shouldPlay: false }
+      );
+      const millis = status && 'durationMillis' in status ? (status.durationMillis as number | undefined) : 0;
+      await sound.unloadAsync();
+      return millis && millis > 0 ? millis / 1000 : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages]);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text style={styles.roomName}>{roomName}</Text>
-        <Text style={styles.roomMeta}>Partner language: {peerLanguage}</Text>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
+        </Pressable>
+        <View style={styles.headerInfo}>
+          <Text style={styles.roomName}>{roomName}</Text>
+          <View style={styles.statusRow}>
+            <View style={styles.onlineDot} />
+            <Text style={styles.roomMeta}>{peerLanguage}</Text>
+          </View>
+        </View>
+        <Pressable style={styles.headerBtn}>
+          <Ionicons name="call-outline" size={20} color={Colors.light.tint} />
+        </Pressable>
+        <Pressable style={styles.headerBtn}>
+          <Ionicons name="videocam-outline" size={22} color={Colors.light.tint} />
+        </Pressable>
       </View>
 
-      <ScrollView style={styles.messageList} contentContainerStyle={styles.messageContent}>
-        {messages.map((msg) => (
-          <View key={msg.id} style={[styles.messageBubble, msg.fromMe ? styles.fromMe : styles.fromOther]}>
-            {msg.kind === 'voice' ? (
-              <Pressable style={styles.playVoiceButton} onPress={() => handlePlayVoice(msg)}>
-                <Text style={styles.playVoiceText}>Play voice</Text>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.messageList} 
+          contentContainerStyle={styles.messageContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {messages.map((msg) => (
+            <View 
+              key={msg.id} 
+              style={[
+                styles.messageContainer, 
+                msg.fromMe ? styles.containerMe : styles.containerOther
+              ]}
+            >
+              {!msg.fromMe && (
+                <View style={styles.messageAvatar}>
+                  <Text style={styles.avatarText}>{roomName.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={[styles.messageBubble, msg.fromMe ? styles.fromMe : styles.fromOther]}>
+                {msg.kind === 'voice' ? (
+                  <Pressable style={styles.audioPlayer} onPress={() => handlePlayVoice(msg)}>
+                    <View style={styles.audioControls}>
+                      <View style={[styles.playButton, !msg.fromMe && styles.fromOtherPlayButton]}>
+                        <Ionicons 
+                          name={playingMessageId && String(playingMessageId) === String(msg.id) ? "pause" : "play"} 
+                          size={18} 
+                          color={msg.fromMe ? Colors.light.tint : Colors.light.text} 
+                        />
+                      </View>
+                      <View style={styles.waveformContainer}>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                          <View 
+                            key={i} 
+                            style={[
+                              styles.waveBar, 
+                              { height: 5 + (i * 2) % 15 },
+                              { backgroundColor: msg.fromMe ? 'rgba(255, 255, 255, 0.3)' : 'rgba(13, 148, 136, 0.2)' }
+                            ]} 
+                          />
+                        ))}
+                      </View>
+                      <Text style={[styles.audioDuration, { color: msg.fromMe ? 'rgba(255,255,255,0.7)' : Colors.light.muted }]}>
+                        {formatDuration(msg.duration)}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ) : null}
+                
+                {msg.fromMe ? (
+                  <Text style={styles.translatedMe}>{msg.original}</Text>
+                ) : (
+                  <>
+                    <Text style={styles.originalOther}>{msg.original}</Text>
+                    <View style={styles.divider} />
+                    <Text style={styles.translatedOther}>{msg.translated}</Text>
+                  </>
+                )}
+                <Text style={[styles.messageTime, { color: msg.fromMe ? 'rgba(255,255,255,0.5)' : Colors.light.muted }]}>
+                  {formatTime(msg.createdAt)}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.inputContainer}>
+          <Pressable style={styles.attachBtn}>
+            <Ionicons name="add" size={24} color={Colors.light.muted} />
+          </Pressable>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              style={styles.input}
+              placeholder="Message..."
+              placeholderTextColor="#94a3b8"
+              multiline
+            />
+            {!input.trim() && (
+              <Pressable style={styles.inputActionBtn}>
+                <Ionicons name="happy-outline" size={22} color={Colors.light.muted} />
               </Pressable>
-            ) : null}
-            {msg.fromMe ? (
-              <Text style={styles.translated}>{msg.original}</Text>
-            ) : (
-              <>
-                <Text style={styles.original}>{msg.original}</Text>
-                <Text style={styles.translated}>{msg.translated}</Text>
-              </>
             )}
           </View>
-        ))}
-      </ScrollView>
-
-      <View style={styles.inputRow}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          style={styles.input}
-          placeholder="Type a message"
-          placeholderTextColor="#9ca3af"
-        />
-        <Pressable style={styles.sendBtn} onPress={handleSend}>
-          <Text style={styles.sendText}>Send</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.micBtn, isRecording && styles.micBtnRecording]}
-          onPress={handleVoiceToggle}>
-          <Text style={styles.micText}>{sendingVoice ? '...' : isRecording ? 'Stop' : 'Mic'}</Text>
-        </Pressable>
-      </View>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+          
+          {input.trim() ? (
+            <Pressable style={styles.sendBtn} onPress={handleSend}>
+              <Ionicons name="send" size={20} color="#fff" />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={[styles.micBtn, isRecording && styles.micBtnRecording]}
+              onPress={handleVoiceToggle}
+            >
+              {sendingVoice ? (
+                <Text style={{ color: '#fff', fontSize: 10 }}>...</Text>
+              ) : (
+                <Ionicons 
+                  name={isRecording ? "stop" : "mic"} 
+                  size={22} 
+                  color="#fff" 
+                />
+              )}
+            </Pressable>
+          )}
+        </View>
+        {error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.error}>{error}</Text>
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -390,112 +652,223 @@ export default function ChatRoomScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
+    backgroundColor: Colors.light.background,
   },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    gap: 8,
+  },
+  backBtn: {
+    padding: 4,
+  },
+  headerInfo: {
+    flex: 1,
+    marginLeft: 4,
   },
   roomName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  onlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
+    marginRight: 6,
   },
   roomMeta: {
-    marginTop: 4,
     fontSize: 12,
-    color: '#6b7280',
+    color: Colors.light.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  headerBtn: {
+    padding: 8,
   },
   messageList: {
     flex: 1,
   },
   messageContent: {
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    paddingBottom: 24,
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    maxWidth: '85%',
+  },
+  containerMe: {
+    alignSelf: 'flex-end',
+  },
+  containerOther: {
+    alignSelf: 'flex-start',
+  },
+  messageAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    alignSelf: 'flex-end',
+  },
+  avatarText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748b',
   },
   messageBubble: {
-    maxWidth: '88%',
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 20,
+    padding: 12,
+    paddingHorizontal: 16,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
   fromMe: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#ccfbf1',
+    backgroundColor: Colors.light.tint,
+    borderBottomRightRadius: 4,
   },
   fromOther: {
-    alignSelf: 'flex-start',
     backgroundColor: '#ffffff',
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
-  original: {
-    color: '#6b7280',
+  translatedMe: {
+    fontSize: 15,
+    color: '#ffffff',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  originalOther: {
     fontSize: 13,
+    color: Colors.light.muted,
+    lineHeight: 18,
   },
-  translated: {
-    marginTop: 5,
-    color: '#111827',
-    fontWeight: '700',
-    fontSize: 14,
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginVertical: 6,
   },
-  inputRow: {
+  translatedOther: {
+    fontSize: 15,
+    color: Colors.light.text,
+    lineHeight: 20,
+  },
+  messageTime: {
+    fontSize: 10,
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  audioPlayer: {
+    minWidth: 180,
+    paddingVertical: 4,
+  },
+  audioControls: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  playButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fromOtherPlayButton: {
+    backgroundColor: '#e2e8f0',
+  },
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
+  waveBar: {
+    width: 3,
+    borderRadius: 1.5,
+  },
+  audioDuration: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    paddingTop: 8,
     backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    gap: 8,
+  },
+  attachBtn: {
+    padding: 8,
+  },
+  inputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#111827',
+    fontSize: 15,
+    color: Colors.light.text,
+    paddingVertical: 8,
+    maxHeight: 100,
+  },
+  inputActionBtn: {
+    padding: 4,
   },
   sendBtn: {
-    backgroundColor: '#0f766e',
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.light.tint,
     justifyContent: 'center',
-  },
-  sendText: {
-    color: '#ffffff',
-    fontWeight: '700',
+    alignItems: 'center',
   },
   micBtn: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#1e293b',
     justifyContent: 'center',
+    alignItems: 'center',
   },
   micBtnRecording: {
-    backgroundColor: '#b91c1c',
+    backgroundColor: Colors.light.error,
   },
-  micText: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  playVoiceButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#0f172a',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginBottom: 6,
-  },
-  playVoiceText: {
-    color: '#f8fafc',
-    fontSize: 12,
-    fontWeight: '700',
+  errorContainer: {
+    backgroundColor: '#fef2f2',
+    padding: 8,
   },
   error: {
-    color: '#b91c1c',
+    color: Colors.light.error,
     fontSize: 12,
     textAlign: 'center',
-    marginBottom: 6,
   },
 });

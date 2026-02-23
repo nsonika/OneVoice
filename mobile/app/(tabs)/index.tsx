@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, ScrollView, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '@/app/lib/api';
 import { useSession } from '@/app/lib/session';
+import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 type ChatItem = {
   id: string;
@@ -54,46 +56,102 @@ export default function ChatsScreen() {
   }, [loadChats]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.title}>OneVoice</Text>
-        <Text style={styles.subtitle}>Speak any language, be understood instantly</Text>
-        <View style={styles.languagePill}>
-          <Text style={styles.languageLabel}>Your language: {user?.preferredLanguage || '-'}</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.welcomeText}>Hello,</Text>
+          <Text style={styles.userName}>{user?.name || 'User'}</Text>
         </View>
-      </View>
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent chats</Text>
-        <Pressable onPress={loadChats}>
-          <Text style={styles.refresh}>{loading ? 'Loading...' : 'Refresh'}</Text>
-        </Pressable>
-      </View>
-
-      {chats.map((chat) => (
-        <Pressable
-          key={chat.id}
-          style={styles.chatCard}
-          onPress={() =>
-            router.push({
-              pathname: '/chat/[id]',
-              params: { id: chat.id, name: chat.name, language: chat.language, peerName: chat.name },
-            })
-          }>
-          <View style={styles.chatRow}>
-            <Text style={styles.chatName}>{chat.name}</Text>
-            <Text style={styles.chatLanguage}>{chat.language}</Text>
+        <Pressable style={styles.profileBtn} onPress={() => router.push('/(tabs)/profile')}>
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarText}>{(user?.name || 'U').charAt(0).toUpperCase()}</Text>
           </View>
-          <Text style={styles.original}>{chat.lastOriginal}</Text>
-          <Text style={styles.translated}>{chat.lastTranslated}</Text>
-          {chat.unread > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{chat.unread}</Text>
-            </View>
-          ) : null}
         </Pressable>
-      ))}
-      {!chats.length && !loading ? <Text style={styles.empty}>No conversations yet.</Text> : null}
+      </View>
+
+      <ScrollView 
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={loadChats} colors={[Colors.light.tint]} />
+        }
+      >
+        <View style={styles.hero}>
+          <View style={styles.heroContent}>
+            <Text style={styles.title}>OneVoice</Text>
+            <Text style={styles.subtitle}>Speak any language, be understood instantly</Text>
+            <View style={styles.languagePill}>
+              <Ionicons name="language" size={14} color={Colors.light.background} />
+              <Text style={styles.languageLabel}>{user?.preferredLanguage || 'en'}</Text>
+            </View>
+          </View>
+          <View style={styles.heroIconContainer}>
+            <Ionicons name="chatbubbles" size={60} color="rgba(255,255,255,0.2)" />
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Chats</Text>
+          {chats.length > 0 && (
+            <Pressable onPress={() => router.push('/explore')}>
+              <Text style={styles.viewAllText}>New Chat</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {chats.map((chat) => (
+          <Pressable
+            key={chat.id}
+            style={({ pressed }) => [
+              styles.chatCard,
+              pressed && styles.chatCardPressed
+            ]}
+            onPress={() =>
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: chat.id, name: chat.name, language: chat.language, peerName: chat.name },
+              })
+            }>
+            <View style={styles.chatIconContainer}>
+              <View style={[styles.chatAvatar, { backgroundColor: chat.type === 'GROUP' ? '#0d9488' : '#6366f1' }]}>
+                <Ionicons 
+                  name={chat.type === 'GROUP' ? 'people' : 'person'} 
+                  size={20} 
+                  color="#fff" 
+                />
+              </View>
+            </View>
+            <View style={styles.chatInfo}>
+              <View style={styles.chatRow}>
+                <Text style={styles.chatName} numberOfLines={1}>{chat.name}</Text>
+                <Text style={styles.chatTime}>Just now</Text>
+              </View>
+              <View style={styles.messageRow}>
+                <View style={styles.messageContainer}>
+                  <Text style={styles.original} numberOfLines={1}>{chat.lastOriginal}</Text>
+                  <Text style={styles.translated} numberOfLines={1}>{chat.lastTranslated}</Text>
+                </View>
+                {chat.unread > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadText}>{chat.unread}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Pressable>
+        ))}
+        
+        {!chats.length && !loading ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubble-ellipses-outline" size={64} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No conversations yet.</Text>
+            <Pressable style={styles.startChatBtn} onPress={() => router.push('/explore')}>
+              <Text style={styles.startChatText}>Start a conversation</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={{ height: 20 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -101,101 +159,229 @@ export default function ChatsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
-    paddingHorizontal: 16,
+    backgroundColor: Colors.light.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+  },
+  welcomeText: {
+    fontSize: 14,
+    color: Colors.light.muted,
+    fontWeight: '500',
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  profileBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.light.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  avatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.light.tint,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
   },
   hero: {
-    marginTop: 12,
-    marginBottom: 18,
-    backgroundColor: '#0f766e',
-    borderRadius: 18,
-    padding: 16,
+    marginTop: 10,
+    marginBottom: 25,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 24,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  heroContent: {
+    flex: 1,
+    zIndex: 1,
+  },
+  heroIconContainer: {
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
+    opacity: 0.5,
   },
   title: {
-    color: '#f8fafc',
-    fontSize: 28,
-    fontWeight: '800',
+    color: '#ffffff',
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -0.5,
   },
   subtitle: {
-    color: '#ccfbf1',
-    marginTop: 6,
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    maxWidth: '80%',
   },
   languagePill: {
-    marginTop: 12,
+    marginTop: 16,
     alignSelf: 'flex-start',
-    backgroundColor: '#134e4a',
-    borderRadius: 999,
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   languageLabel: {
-    color: '#99f6e4',
+    color: '#ffffff',
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 13,
+    textTransform: 'uppercase',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 15,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: Colors.light.tint,
+    fontWeight: '600',
   },
   chatCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: Colors.light.card,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+  },
+  chatCardPressed: {
+    backgroundColor: '#f1f5f9',
+    transform: [{ scale: 0.98 }],
+  },
+  chatIconContainer: {
+    marginRight: 12,
+  },
+  chatAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chatInfo: {
+    flex: 1,
   },
   chatRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: 4,
   },
   chatName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: Colors.light.text,
+    flex: 1,
+    marginRight: 8,
   },
-  chatLanguage: {
+  chatTime: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#0f766e',
+    color: Colors.light.muted,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  messageContainer: {
+    flex: 1,
+    marginRight: 8,
   },
   original: {
-    color: '#6b7280',
+    color: Colors.light.muted,
     fontSize: 13,
   },
   translated: {
-    marginTop: 4,
-    color: '#111827',
+    marginTop: 2,
+    color: Colors.light.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   unreadBadge: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    backgroundColor: '#dc2626',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    backgroundColor: Colors.light.tint,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
   },
   unreadText: {
     color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
   },
-  refresh: {
-    color: '#0f766e',
-    fontWeight: '700',
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 60,
   },
-  empty: {
-    marginTop: 12,
-    color: '#6b7280',
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: Colors.light.muted,
     textAlign: 'center',
+  },
+  startChatBtn: {
+    marginTop: 20,
+    backgroundColor: Colors.light.tint,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  startChatText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
   },
 });

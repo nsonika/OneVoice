@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '@/app/lib/api';
 import { useSession } from '@/app/lib/session';
+import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 type Contact = {
   id: string;
@@ -137,61 +139,158 @@ export default function ContactsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Contacts</Text>
-      <Text style={styles.subtitle}>Add people by email and start a translated chat instantly.</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Add contact by email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="friend@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-        <Pressable style={styles.addButton} onPress={handleAddContact}>
-          <Text style={styles.addText}>{loading ? 'Adding...' : 'Add contact'}</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </Pressable>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Text style={styles.headerTitle}>Contacts</Text>
+        <View style={{ width: 32 }} />
       </View>
 
-      <View style={styles.groupCard}>
-        <Text style={styles.groupTitle}>Create group</Text>
-        <Text style={styles.groupHint}>Web: Ctrl/Cmd + click contacts to select members</Text>
-        <TextInput
-          value={groupName}
-          onChangeText={setGroupName}
-          placeholder="Team sync"
-          style={styles.input}
-        />
-        <Text style={styles.groupMeta}>Selected: {selectedUserIds.length}</Text>
-        <View style={styles.groupActions}>
-          <Pressable style={styles.secondaryButton} onPress={() => setSelectedUserIds([])}>
-            <Text style={styles.secondaryText}>Clear</Text>
-          </Pressable>
-          <Pressable style={styles.addButton} onPress={handleCreateGroup}>
-            <Text style={styles.addText}>{loading ? 'Creating...' : 'Create group'}</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {list.map((contact) => (
-        <Pressable
-          key={contact.id}
-          style={[styles.contactCard, selectedUserIds.includes(contact.userId) && styles.contactCardSelected]}
-          onPress={(e) => handleContactPress(contact, e)}>
-          <View style={styles.row}>
-            <Text style={styles.name}>{contact.name}</Text>
-            <Text style={styles.lang}>{contact.language}</Text>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={loadContacts} colors={[Colors.light.tint]} />
+        }
+      >
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Add New Friend</Text>
+          <View style={styles.card}>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="friend@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+            <Pressable 
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && styles.buttonPressed,
+                loading && styles.buttonDisabled
+              ]} 
+              onPress={handleAddContact}
+              disabled={loading}
+            >
+              <Text style={styles.addText}>{loading ? 'Searching...' : 'Add Contact'}</Text>
+            </Pressable>
           </View>
-          <Text style={styles.email}>{contact.email}</Text>
-        </Pressable>
-      ))}
-      {loading ? <Text style={styles.meta}>Loading...</Text> : null}
-      {!loading && !list.length ? <Text style={styles.meta}>No contacts yet.</Text> : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Create Group Chat</Text>
+          <View style={styles.card}>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="people-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+              <TextInput
+                value={groupName}
+                onChangeText={setGroupName}
+                placeholder="Group Name (e.g. Travel Plan)"
+                style={styles.input}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+            
+            <View style={styles.selectionInfo}>
+              <Text style={styles.selectedCount}>
+                {selectedUserIds.length} {selectedUserIds.length === 1 ? 'member' : 'members'} selected
+              </Text>
+              {selectedUserIds.length > 0 && (
+                <Pressable onPress={() => setSelectedUserIds([])}>
+                  <Text style={styles.clearText}>Clear all</Text>
+                </Pressable>
+              )}
+            </View>
+
+            <Pressable 
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && styles.buttonPressed,
+                (loading || selectedUserIds.length === 0) && styles.buttonDisabled
+              ]} 
+              onPress={handleCreateGroup}
+              disabled={loading || selectedUserIds.length === 0}
+            >
+              <Text style={styles.addText}>{loading ? 'Creating...' : 'Create Group'}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.contactsHeader}>
+            <Text style={styles.sectionTitle}>Your Contacts</Text>
+            <Text style={styles.hint}>Long press to multi-select</Text>
+          </View>
+
+          {list.map((contact) => (
+            <Pressable
+              key={contact.id}
+              style={({ pressed }) => [
+                styles.contactCard,
+                selectedUserIds.includes(contact.userId) && styles.contactCardSelected,
+                pressed && styles.contactCardPressed
+              ]}
+              onPress={(e) => handleContactPress(contact, e)}
+              onLongPress={() => toggleSelection(contact.userId)}
+            >
+              <View style={styles.contactAvatar}>
+                <Text style={styles.avatarText}>{contact.name.charAt(0).toUpperCase()}</Text>
+                {selectedUserIds.includes(contact.userId) && (
+                  <View style={styles.selectedBadge}>
+                    <Ionicons name="checkmark" size={12} color="#fff" />
+                  </View>
+                )}
+              </View>
+              
+              <View style={styles.contactInfo}>
+                <View style={styles.contactRow}>
+                  <Text style={styles.contactName}>{contact.name}</Text>
+                  <View style={styles.langPill}>
+                    <Text style={styles.langText}>{contact.language.toUpperCase()}</Text>
+                  </View>
+                </View>
+                <Text style={styles.contactEmail}>{contact.email}</Text>
+              </View>
+              
+              <Ionicons name="chevron-forward" size={18} color="#cbd5e1" />
+            </Pressable>
+          ))}
+
+          {!loading && !list.length ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="person-add-outline" size={48} color="#e2e8f0" />
+              <Text style={styles.emptyText}>No contacts yet.</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {status || error ? (
+          <View style={[
+            styles.statusContainer,
+            error ? styles.errorStatus : styles.successStatus
+          ]}>
+            <Ionicons 
+              name={error ? "alert-circle" : "checkmark-circle"} 
+              size={18} 
+              color={error ? Colors.light.error : Colors.light.success} 
+            />
+            <Text style={[
+              styles.statusText,
+              { color: error ? Colors.light.error : Colors.light.success }
+            ]}>
+              {error || status}
+            </Text>
+          </View>
+        ) : null}
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -199,132 +298,226 @@ export default function ContactsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
+    backgroundColor: Colors.light.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 14,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
-  title: {
-    color: '#111827',
-    fontSize: 24,
-    fontWeight: '800',
+  backBtn: {
+    padding: 4,
   },
-  subtitle: {
-    color: '#4b5563',
-    marginTop: 8,
-    marginBottom: 18,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  scrollContent: {
+    paddingBottom: 24,
+  },
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.light.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    marginLeft: 4,
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
     marginBottom: 12,
   },
-  groupCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 16,
-  },
-  groupTitle: {
-    color: '#111827',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  groupHint: {
-    marginTop: 6,
-    color: '#6b7280',
-    fontSize: 12,
-  },
-  groupMeta: {
-    marginTop: 6,
-    color: '#0f766e',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  groupActions: {
-    marginTop: 10,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  secondaryText: {
-    color: '#374151',
-    fontWeight: '700',
-  },
-  cardLabel: {
-    color: '#6b7280',
-    fontSize: 12,
-    marginTop: 6,
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 8,
-    marginBottom: 10,
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.light.text,
   },
   addButton: {
-    backgroundColor: '#0f766e',
-    borderRadius: 10,
-    paddingVertical: 12,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  buttonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  buttonDisabled: {
+    backgroundColor: '#94a3b8',
   },
   addText: {
-    color: '#ffffff',
+    color: '#fff',
+    fontSize: 15,
     fontWeight: '700',
   },
-  contactCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-  },
-  contactCardSelected: {
-    borderWidth: 2,
-    borderColor: '#0f766e',
-    backgroundColor: '#f0fdfa',
-  },
-  row: {
+  selectionInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
-  name: {
-    color: '#111827',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  lang: {
-    color: '#0f766e',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  email: {
-    marginTop: 4,
-    color: '#6b7280',
+  selectedCount: {
     fontSize: 13,
+    fontWeight: '600',
+    color: Colors.light.tint,
   },
-  meta: {
-    textAlign: 'center',
-    color: '#6b7280',
-    marginTop: 8,
+  clearText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.light.error,
   },
-  status: {
-    textAlign: 'center',
-    color: '#0f766e',
-    marginTop: 8,
+  contactsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
   },
-  error: {
-    textAlign: 'center',
-    color: '#b91c1c',
-    marginTop: 8,
+  hint: {
+    fontSize: 11,
+    color: Colors.light.muted,
+    fontStyle: 'italic',
+  },
+  contactCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  contactCardSelected: {
+    borderColor: Colors.light.tint,
+    backgroundColor: '#f0fdfa',
+  },
+  contactCardPressed: {
+    backgroundColor: '#f8fafc',
+  },
+  contactAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    position: 'relative',
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.light.tint,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+    gap: 8,
+  },
+  contactName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  langPill: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  langText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.light.tint,
+  },
+  contactEmail: {
+    fontSize: 13,
+    color: Colors.light.muted,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.light.muted,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginTop: 20,
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  successStatus: {
+    backgroundColor: '#ecfdf5',
+  },
+  errorStatus: {
+    backgroundColor: '#fef2f2',
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

@@ -1,8 +1,10 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '@/app/lib/session';
+import { Colors } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 
 const LANGUAGES = [
   { label: 'English', value: 'en' },
@@ -39,66 +41,118 @@ export default function SignUpScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.hero}>
-        <Text style={styles.brand}>OneVoice</Text>
-        <Text style={styles.tagline}>Set your language and start chatting instantly</Text>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Ionicons name="chatbubbles-outline" size={40} color={Colors.light.tint} />
+            </View>
+            <Text style={styles.brand}>OneVoice</Text>
+            <Text style={styles.tagline}>Set your language and start chatting</Text>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Sign up</Text>
+          <View style={styles.card}>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Join the global conversation today</Text>
 
-        <Text style={styles.label}>Full name</Text>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Your name"
-          style={styles.input}
-        />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Full Name</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="John Doe"
+                  style={styles.input}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email Address</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={styles.input}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Create password"
-          secureTextEntry
-          style={styles.input}
-        />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  secureTextEntry
+                  style={styles.input}
+                  placeholderTextColor="#94a3b8"
+                />
+              </View>
+            </View>
 
-        <Text style={styles.label}>Preferred language</Text>
-        <View style={styles.langWrap}>
-          {LANGUAGES.map((item) => (
-            <Pressable
-              key={item.value}
-              onPress={() => setLanguage(item.value)}
-              style={[styles.langChip, item.value === language && styles.langChipActive]}>
-              <Text style={[styles.langText, item.value === language && styles.langTextActive]}>
-                {item.label}
-              </Text>
+            <Text style={styles.label}>Preferred Language</Text>
+            <View style={styles.langWrap}>
+              {LANGUAGES.map((item) => (
+                <Pressable
+                  key={item.value}
+                  onPress={() => setLanguage(item.value)}
+                  style={[
+                    styles.langChip, 
+                    item.value === language && styles.langChipActive,
+                    { elevation: item.value === language ? 4 : 0 }
+                  ]}>
+                  <Text style={[styles.langText, item.value === language && styles.langTextActive]}>
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={16} color={Colors.light.error} />
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
+
+            <Pressable 
+              style={({ pressed }) => [
+                styles.cta,
+                pressed && styles.ctaPressed,
+                loading && styles.ctaDisabled
+              ]} 
+              onPress={handleCreateAccount}
+              disabled={loading}
+            >
+              <Text style={styles.ctaText}>{loading ? 'Creating...' : 'Create Account'}</Text>
+              {!loading && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />}
             </Pressable>
-          ))}
-        </View>
 
-        <Pressable style={styles.cta} onPress={handleCreateAccount}>
-          <Text style={styles.ctaText}>{loading ? 'Creating...' : 'Create account'}</Text>
-        </Pressable>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Link href="/auth/sign-in" asChild>
-          <Pressable style={styles.linkWrap}>
-            <Text style={styles.linkText}>Already have an account? Sign in</Text>
-          </Pressable>
-        </Link>
-      </View>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <Link href="/auth/sign-in" asChild>
+                <Pressable>
+                  <Text style={styles.linkText}>Sign In</Text>
+                </Pressable>
+              </Link>
+            </View>
+          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -106,95 +160,178 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f4f6fb',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    backgroundColor: Colors.light.background,
   },
-  hero: {
-    backgroundColor: '#0f766e',
-    borderRadius: 18,
-    padding: 16,
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    paddingBottom: 24,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
+    elevation: 4,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
   },
   brand: {
-    color: '#f8fafc',
-    fontWeight: '800',
-    fontSize: 28,
+    color: Colors.light.text,
+    fontWeight: '900',
+    fontSize: 32,
+    letterSpacing: -1,
   },
   tagline: {
-    color: '#ccfbf1',
-    marginTop: 6,
+    color: Colors.light.muted,
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
   },
   card: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 32,
+    padding: 24,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
   },
   title: {
-    color: '#111827',
+    color: Colors.light.text,
     fontWeight: '800',
     fontSize: 24,
-    marginBottom: 12,
+  },
+  subtitle: {
+    marginTop: 4,
+    marginBottom: 24,
+    color: Colors.light.muted,
+    fontSize: 15,
+  },
+  inputGroup: {
+    marginBottom: 16,
   },
   label: {
-    color: '#6b7280',
-    marginBottom: 6,
-    fontSize: 13,
+    color: Colors.light.text,
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.light.text,
   },
   langWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 24,
+    marginTop: 8,
   },
   langChip: {
-    backgroundColor: '#e5e7eb',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   langChipActive: {
-    backgroundColor: '#0f766e',
+    backgroundColor: Colors.light.tint,
+    borderColor: Colors.light.tint,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   langText: {
-    color: '#111827',
-    fontWeight: '700',
-    fontSize: 12,
+    color: Colors.light.text,
+    fontWeight: '600',
+    fontSize: 13,
   },
   langTextActive: {
     color: '#ffffff',
   },
   cta: {
-    marginTop: 4,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    paddingVertical: 12,
+    marginTop: 8,
+    backgroundColor: Colors.light.tint,
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: Colors.light.tint,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  ctaPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  ctaDisabled: {
+    backgroundColor: '#94a3b8',
   },
   ctaText: {
     color: '#ffffff',
     fontWeight: '700',
+    fontSize: 16,
   },
-  linkWrap: {
-    paddingVertical: 12,
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
     alignItems: 'center',
-    marginTop: 4,
+  },
+  footerText: {
+    color: Colors.light.muted,
+    fontSize: 14,
   },
   linkText: {
-    color: '#0f766e',
+    color: Colors.light.tint,
     fontWeight: '700',
+    fontSize: 14,
   },
-  error: {
-    marginTop: 4,
-    color: '#b91c1c',
-    fontSize: 12,
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  errorText: {
+    color: Colors.light.error,
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });
