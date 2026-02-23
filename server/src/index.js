@@ -348,6 +348,12 @@ app.delete("/conversations/:conversationId/members/:userId", requireAuth, async 
 });
 
 app.get("/conversations", requireAuth, async (req, res) => {
+  const me = await prisma.user.findUnique({
+    where: { id: req.auth.userId },
+    select: { preferredLanguage: true }
+  });
+  const preferredLanguage = me?.preferredLanguage || "en";
+
   const conversations = await prisma.conversation.findMany({
     where: {
       members: { some: { userId: req.auth.userId } }
@@ -361,6 +367,7 @@ app.get("/conversations", requireAuth, async (req, res) => {
         }
       },
       messages: {
+        where: { targetLanguage: preferredLanguage },
         orderBy: { createdAt: "desc" },
         take: 1
       }
