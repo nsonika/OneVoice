@@ -1,5 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, setAuthToken } from './api';
+import i18n from './i18n';
 
 export type SessionUser = {
   id: string;
@@ -37,6 +38,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/signin', { email, password });
+      i18n.locale = data.user?.preferredLanguage || 'en';
       setToken(data.token);
       setAuthToken(data.token);
       setUser(data.user);
@@ -49,6 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/signup', input);
+      i18n.locale = data.user?.preferredLanguage || 'en';
       setToken(data.token);
       setAuthToken(data.token);
       setUser(data.user);
@@ -62,6 +65,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { data } = await api.get('/users/me');
+      i18n.locale = data?.preferredLanguage || 'en';
       setUser(data);
     } finally {
       setLoading(false);
@@ -70,6 +74,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const updateMe = useCallback(async (patch: Partial<Pick<SessionUser, 'name' | 'preferredLanguage'>>) => {
     const { data } = await api.patch('/users/me', patch);
+    i18n.locale = data?.preferredLanguage || 'en';
     setUser(data);
   }, []);
 
@@ -77,7 +82,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setAuthToken(null);
+    i18n.locale = 'en';
   }, []);
+
+  useEffect(() => {
+    if (user?.preferredLanguage) {
+      i18n.locale = user.preferredLanguage;
+    }
+  }, [user?.preferredLanguage]);
 
   const value = useMemo(
     () => ({ token, user, loading, signIn, signUp, refreshMe, updateMe, signOut }),

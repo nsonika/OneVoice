@@ -6,6 +6,7 @@ import { api } from '@/app/lib/api';
 import { useSession } from '@/app/lib/session';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import i18n from '@/app/lib/i18n';
 
 type Contact = {
   id: string;
@@ -41,7 +42,7 @@ export default function ContactsScreen() {
       setContacts(mapped);
     } catch (e: any) {
       if (e?.response?.status === 401) signOut();
-      setError(e?.response?.data?.error || 'Failed to load contacts');
+      setError(e?.response?.data?.error || i18n.t('contacts.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -53,20 +54,20 @@ export default function ContactsScreen() {
 
   async function handleAddContact() {
     if (!email.trim()) {
-      setError('Enter an email first');
+      setError(i18n.t('contacts.enterEmail'));
       return;
     }
     try {
-      setStatus('Sending request...');
+      setStatus(i18n.t('contacts.sendingRequest'));
       setError('');
       setLoading(true);
       await api.post('/contacts', { email: email.trim() });
       setEmail('');
-      setStatus('Contact added');
+      setStatus(i18n.t('contacts.contactAdded'));
       await loadContacts();
     } catch (e: any) {
       setStatus('');
-      setError(e?.response?.data?.error || 'Failed to add contact');
+      setError(e?.response?.data?.error || i18n.t('contacts.addContactFailed'));
     } finally {
       setLoading(false);
     }
@@ -80,7 +81,7 @@ export default function ContactsScreen() {
         params: { id: data.id, name: contact.name, language: contact.language, peerName: contact.name },
       });
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Failed to open conversation');
+      setError(e?.response?.data?.error || i18n.t('contacts.openConversationFailed'));
     }
   }
 
@@ -100,18 +101,18 @@ export default function ContactsScreen() {
 
   async function handleCreateGroup() {
     if (!groupName.trim()) {
-      setError('Enter group name');
+      setError(i18n.t('contacts.enterGroupName'));
       return;
     }
     if (selectedUserIds.length < 1) {
-      setError('Select at least 1 contact');
+      setError(i18n.t('contacts.selectAtLeastOne'));
       return;
     }
 
     try {
       setLoading(true);
       setError('');
-      setStatus('Creating group...');
+      setStatus(i18n.t('contacts.creatingGroup'));
       const { data } = await api.post('/conversations/group', {
         name: groupName.trim(),
         memberUserIds: selectedUserIds,
@@ -119,20 +120,20 @@ export default function ContactsScreen() {
 
       setSelectedUserIds([]);
       setGroupName('');
-      setStatus('Group created');
+      setStatus(i18n.t('contacts.groupCreated'));
 
       router.push({
         pathname: '/chat/[id]',
         params: {
           id: data.id,
-          name: data.name || 'Group',
-          language: 'group',
-          peerName: data.name || 'Group',
+          name: data.name || i18n.t('chats.group'),
+          language: i18n.t('chats.group'),
+          peerName: data.name || i18n.t('chats.group'),
         },
       });
     } catch (e: any) {
       setStatus('');
-      setError(e?.response?.data?.error || 'Failed to create group');
+      setError(e?.response?.data?.error || i18n.t('contacts.createGroupFailed'));
     } finally {
       setLoading(false);
     }
@@ -144,7 +145,7 @@ export default function ContactsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Contacts</Text>
+        <Text style={styles.headerTitle}>{i18n.t('contacts.title')}</Text>
         <View style={{ width: 32 }} />
       </View>
 
@@ -156,14 +157,14 @@ export default function ContactsScreen() {
         }
       >
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Add New Friend</Text>
+          <Text style={styles.sectionTitle}>{i18n.t('contacts.addNewFriend')}</Text>
           <View style={styles.card}>
             <View style={styles.inputWrapper}>
               <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
               <TextInput
                 value={email}
                 onChangeText={setEmail}
-                placeholder="friend@example.com"
+                placeholder={i18n.t('contacts.emailPlaceholder')}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 style={styles.input}
@@ -179,20 +180,20 @@ export default function ContactsScreen() {
               onPress={handleAddContact}
               disabled={loading}
             >
-              <Text style={styles.addText}>{loading ? 'Searching...' : 'Add Contact'}</Text>
+              <Text style={styles.addText}>{loading ? i18n.t('contacts.adding') : i18n.t('contacts.addContact')}</Text>
             </Pressable>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Create Group Chat</Text>
+          <Text style={styles.sectionTitle}>{i18n.t('contacts.createGroup')}</Text>
           <View style={styles.card}>
             <View style={styles.inputWrapper}>
               <Ionicons name="people-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
               <TextInput
                 value={groupName}
                 onChangeText={setGroupName}
-                placeholder="Group Name (e.g. Travel Plan)"
+                placeholder={i18n.t('contacts.groupNamePlaceholder')}
                 style={styles.input}
                 placeholderTextColor="#94a3b8"
               />
@@ -200,11 +201,12 @@ export default function ContactsScreen() {
             
             <View style={styles.selectionInfo}>
               <Text style={styles.selectedCount}>
-                {selectedUserIds.length} {selectedUserIds.length === 1 ? 'member' : 'members'} selected
+                {selectedUserIds.length}{' '}
+                {selectedUserIds.length === 1 ? i18n.t('contacts.memberSelected') : i18n.t('contacts.membersSelected')}
               </Text>
               {selectedUserIds.length > 0 && (
                 <Pressable onPress={() => setSelectedUserIds([])}>
-                  <Text style={styles.clearText}>Clear all</Text>
+                  <Text style={styles.clearText}>{i18n.t('contacts.clearAll')}</Text>
                 </Pressable>
               )}
             </View>
@@ -218,15 +220,15 @@ export default function ContactsScreen() {
               onPress={handleCreateGroup}
               disabled={loading || selectedUserIds.length === 0}
             >
-              <Text style={styles.addText}>{loading ? 'Creating...' : 'Create Group'}</Text>
+              <Text style={styles.addText}>{loading ? i18n.t('contacts.creatingGroup') : i18n.t('contacts.createGroupBtn')}</Text>
             </Pressable>
           </View>
         </View>
 
         <View style={styles.section}>
           <View style={styles.contactsHeader}>
-            <Text style={styles.sectionTitle}>Your Contacts</Text>
-            <Text style={styles.hint}>Long press to multi-select</Text>
+            <Text style={styles.sectionTitle}>{i18n.t('contacts.yourContacts')}</Text>
+            <Text style={styles.hint}>{i18n.t('contacts.multiSelectHint')}</Text>
           </View>
 
           {list.map((contact) => (
@@ -266,7 +268,7 @@ export default function ContactsScreen() {
           {!loading && !list.length ? (
             <View style={styles.emptyState}>
               <Ionicons name="person-add-outline" size={48} color="#e2e8f0" />
-              <Text style={styles.emptyText}>No contacts yet.</Text>
+            <Text style={styles.emptyText}>{i18n.t('contacts.noContacts')}</Text>
             </View>
           ) : null}
         </View>

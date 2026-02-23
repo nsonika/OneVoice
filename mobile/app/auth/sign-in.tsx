@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '@/app/lib/session';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import i18n from '@/app/lib/i18n';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function SignInScreen() {
       await signIn(email.trim(), password);
       router.replace('/(tabs)');
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Sign in failed');
+      setError(e?.response?.data?.error || i18n.t('auth.signInFailed'));
     }
   }
 
@@ -36,21 +37,21 @@ export default function SignInScreen() {
               <Ionicons name="chatbubble-ellipses" size={40} color={Colors.light.tint} />
             </View>
             <Text style={styles.brand}>OneVoice</Text>
-            <Text style={styles.tagline}>Break language barriers instantly</Text>
+            <Text style={styles.tagline}>{i18n.t('auth.brandTagline')}</Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Sign in to continue your conversations</Text>
+            <Text style={styles.title}>{i18n.t('auth.signInTitle')}</Text>
+            <Text style={styles.subtitle}>{i18n.t('auth.signInSubtitle')}</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>{i18n.t('auth.email')}</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="you@example.com"
+                  placeholder={i18n.t('auth.emailPlaceholder')}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   style={styles.input}
@@ -60,13 +61,13 @@ export default function SignInScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
+              <Text style={styles.label}>{i18n.t('auth.password')}</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="••••••••"
+                  placeholder={i18n.t('auth.passwordPlaceholder')}
                   secureTextEntry
                   style={styles.input}
                   placeholderTextColor="#94a3b8"
@@ -90,15 +91,15 @@ export default function SignInScreen() {
               onPress={handleSignIn}
               disabled={loading}
             >
-              <Text style={styles.ctaText}>{loading ? 'Signing in...' : 'Sign In'}</Text>
+              <Text style={styles.ctaText}>{loading ? i18n.t('auth.signingIn') : i18n.t('auth.signIn')}</Text>
               {!loading && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />}
             </Pressable>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Don't have an account? </Text>
+              <Text style={styles.footerText}>{i18n.t('auth.noAccount')} </Text>
               <Link href="/auth/sign-up" asChild>
                 <Pressable>
-                  <Text style={styles.linkText}>Create one</Text>
+                  <Text style={styles.linkText}>{i18n.t('auth.createOne')}</Text>
                 </Pressable>
               </Link>
             </View>
@@ -106,7 +107,7 @@ export default function SignInScreen() {
           
           <View style={styles.demoNotice}>
             <Ionicons name="information-circle-outline" size={16} color={Colors.light.muted} />
-            <Text style={styles.demoText}>Demo mode: Use email for instant access</Text>
+            <Text style={styles.demoText}>{i18n.t('auth.demoMode')}</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

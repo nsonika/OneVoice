@@ -5,13 +5,14 @@ import { useSession } from '@/app/lib/session';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import i18n from '@/app/lib/i18n';
 
 const LANGUAGES = [
-  { label: 'English', value: 'en' },
-  { label: 'Hindi', value: 'hi' },
-  { label: 'Tamil', value: 'ta' },
-  { label: 'Telugu', value: 'te' },
-  { label: 'Kannada', value: 'kn' },
+  { value: 'en' },
+  { value: 'hi' },
+  { value: 'ta' },
+  { value: 'te' },
+  { value: 'kn' },
 ];
 
 export default function ProfileScreen() {
@@ -21,6 +22,7 @@ export default function ProfileScreen() {
   const [preferredLanguage, setPreferredLanguage] = useState('en');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -32,12 +34,14 @@ export default function ProfileScreen() {
     try {
       setSaving(true);
       setMessage('');
+      setIsError(false);
       await updateMe({ name: name.trim(), preferredLanguage });
-      setMessage('Settings updated successfully');
+      setMessage(i18n.t('profile.saved'));
       setTimeout(() => setMessage(''), 3000);
     } catch (e: any) {
       if (e?.response?.status === 401) signOut();
-      setMessage(e?.response?.data?.error || 'Failed to save');
+      setIsError(true);
+      setMessage(e?.response?.data?.error || i18n.t('profile.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -49,7 +53,7 @@ export default function ProfileScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.light.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>Profile Settings</Text>
+        <Text style={styles.headerTitle}>{i18n.t('profile.title')}</Text>
         <Pressable onPress={signOut} style={styles.logoutBtn}>
           <Ionicons name="log-out-outline" size={22} color={Colors.light.error} />
         </Pressable>
@@ -72,25 +76,25 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Information</Text>
+            <Text style={styles.sectionTitle}>{i18n.t('profile.accountInfo')}</Text>
             <View style={styles.card}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Display Name</Text>
+                <Text style={styles.label}>{i18n.t('profile.displayName')}</Text>
                 <View style={styles.inputWrapper}>
                   <Ionicons name="person-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                   <TextInput 
                     value={name} 
                     onChangeText={setName} 
                     style={styles.input} 
-                    placeholder="Enter your name" 
+                    placeholder={i18n.t('profile.enterName')} 
                     placeholderTextColor="#94a3b8"
                   />
                 </View>
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Preferred Language</Text>
-                <Text style={styles.hint}>This is the language you'll receive messages in.</Text>
+                <Text style={styles.label}>{i18n.t('profile.preferredLanguage')}</Text>
+                <Text style={styles.hint}>{i18n.t('profile.preferredHint')}</Text>
                 <View style={styles.languageWrap}>
                   {LANGUAGES.map((lang) => (
                     <Pressable
@@ -104,7 +108,7 @@ export default function ProfileScreen() {
                         styles.chipText, 
                         preferredLanguage === lang.value && styles.chipTextActive
                       ]}>
-                        {lang.label}
+                        {i18n.t(`languages.${lang.value}`)}
                       </Text>
                     </Pressable>
                   ))}
@@ -114,12 +118,12 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>App Preferences</Text>
+            <Text style={styles.sectionTitle}>{i18n.t('profile.appPreferences')}</Text>
             <View style={styles.card}>
               <View style={styles.settingRow}>
                 <View style={styles.settingInfo}>
                   <Ionicons name="notifications-outline" size={22} color={Colors.light.muted} />
-                  <Text style={styles.settingLabel}>Push Notifications</Text>
+                  <Text style={styles.settingLabel}>{i18n.t('profile.notifications')}</Text>
                 </View>
                 <View style={styles.togglePlaceholder} />
               </View>
@@ -127,7 +131,7 @@ export default function ProfileScreen() {
               <View style={styles.settingRow}>
                 <View style={styles.settingInfo}>
                   <Ionicons name="moon-outline" size={22} color={Colors.light.muted} />
-                  <Text style={styles.settingLabel}>Dark Mode</Text>
+                  <Text style={styles.settingLabel}>{i18n.t('profile.darkMode')}</Text>
                 </View>
                 <View style={styles.togglePlaceholder} />
               </View>
@@ -136,17 +140,17 @@ export default function ProfileScreen() {
 
           {message ? (
             <View style={[
-              styles.messageContainer, 
-              message.includes('failed') ? styles.errorContainer : styles.successContainer
+            styles.messageContainer, 
+              isError ? styles.errorContainer : styles.successContainer
             ]}>
               <Ionicons 
-                name={message.includes('failed') ? "alert-circle" : "checkmark-circle"} 
+                name={isError ? "alert-circle" : "checkmark-circle"} 
                 size={18} 
-                color={message.includes('failed') ? Colors.light.error : Colors.light.success} 
+                color={isError ? Colors.light.error : Colors.light.success} 
               />
               <Text style={[
                 styles.messageText,
-                { color: message.includes('failed') ? Colors.light.error : Colors.light.success }
+                { color: isError ? Colors.light.error : Colors.light.success }
               ]}>{message}</Text>
             </View>
           ) : null}
@@ -160,7 +164,7 @@ export default function ProfileScreen() {
             onPress={handleSave}
             disabled={saving}
           >
-            <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+            <Text style={styles.saveBtnText}>{saving ? i18n.t('profile.saving') : i18n.t('profile.saveChanges')}</Text>
           </Pressable>
 
           <View style={{ height: 40 }} />

@@ -5,13 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSession } from '@/app/lib/session';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import i18n from '@/app/lib/i18n';
 
 const LANGUAGES = [
-  { label: 'English', value: 'en' },
-  { label: 'Hindi', value: 'hi' },
-  { label: 'Tamil', value: 'ta' },
-  { label: 'Telugu', value: 'te' },
-  { label: 'Kannada', value: 'kn' },
+  { value: 'en' },
+  { value: 'hi' },
+  { value: 'ta' },
+  { value: 'te' },
+  { value: 'kn' },
 ];
 
 export default function SignUpScreen() {
@@ -35,7 +36,7 @@ export default function SignUpScreen() {
       });
       router.replace('/(tabs)');
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Sign up failed');
+      setError(e?.response?.data?.error || i18n.t('auth.signUpFailed'));
     }
   }
 
@@ -51,21 +52,21 @@ export default function SignUpScreen() {
               <Ionicons name="chatbubbles-outline" size={40} color={Colors.light.tint} />
             </View>
             <Text style={styles.brand}>OneVoice</Text>
-            <Text style={styles.tagline}>Set your language and start chatting</Text>
+            <Text style={styles.tagline}>{i18n.t('auth.signUpTagline')}</Text>
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join the global conversation today</Text>
+            <Text style={styles.title}>{i18n.t('auth.signUpTitle')}</Text>
+            <Text style={styles.subtitle}>{i18n.t('auth.signUpSubtitle')}</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Full Name</Text>
+              <Text style={styles.label}>{i18n.t('auth.fullName')}</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="person-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder="John Doe"
+                  placeholder={i18n.t('auth.fullNamePlaceholder')}
                   style={styles.input}
                   placeholderTextColor="#94a3b8"
                 />
@@ -73,13 +74,13 @@ export default function SignUpScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email Address</Text>
+              <Text style={styles.label}>{i18n.t('auth.email')}</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="mail-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="you@example.com"
+                  placeholder={i18n.t('auth.emailPlaceholder')}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   style={styles.input}
@@ -89,13 +90,13 @@ export default function SignUpScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
+              <Text style={styles.label}>{i18n.t('auth.password')}</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={20} color={Colors.light.muted} style={styles.inputIcon} />
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="••••••••"
+                  placeholder={i18n.t('auth.passwordPlaceholder')}
                   secureTextEntry
                   style={styles.input}
                   placeholderTextColor="#94a3b8"
@@ -103,7 +104,7 @@ export default function SignUpScreen() {
               </View>
             </View>
 
-            <Text style={styles.label}>Preferred Language</Text>
+            <Text style={styles.label}>{i18n.t('auth.preferredLanguage')}</Text>
             <View style={styles.langWrap}>
               {LANGUAGES.map((item) => (
                 <Pressable
@@ -115,7 +116,7 @@ export default function SignUpScreen() {
                     { elevation: item.value === language ? 4 : 0 }
                   ]}>
                   <Text style={[styles.langText, item.value === language && styles.langTextActive]}>
-                    {item.label}
+                    {i18n.t(`languages.${item.value}`)}
                   </Text>
                 </Pressable>
               ))}
@@ -137,15 +138,15 @@ export default function SignUpScreen() {
               onPress={handleCreateAccount}
               disabled={loading}
             >
-              <Text style={styles.ctaText}>{loading ? 'Creating...' : 'Create Account'}</Text>
+              <Text style={styles.ctaText}>{loading ? i18n.t('auth.creating') : i18n.t('auth.createAccount')}</Text>
               {!loading && <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />}
             </Pressable>
 
             <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account? </Text>
+              <Text style={styles.footerText}>{i18n.t('auth.hasAccount')} </Text>
               <Link href="/auth/sign-in" asChild>
                 <Pressable>
-                  <Text style={styles.linkText}>Sign In</Text>
+                  <Text style={styles.linkText}>{i18n.t('auth.signIn')}</Text>
                 </Pressable>
               </Link>
             </View>

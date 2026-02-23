@@ -6,6 +6,7 @@ import { api } from '@/app/lib/api';
 import { useSession } from '@/app/lib/session';
 import { Colors } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import i18n from '@/app/lib/i18n';
 
 type ChatItem = {
   id: string;
@@ -35,10 +36,10 @@ export default function ChatsScreen() {
         const groupMemberCount = (conv.members || []).length;
         return {
           id: conv.id,
-          name: isGroup ? conv.name || `Group (${groupMemberCount})` : peer?.name || 'Unknown',
-          language: isGroup ? `group Â· ${groupMemberCount}` : peer?.preferredLanguage || '-',
-          lastOriginal: last?.originalText || 'No messages yet',
-          lastTranslated: last?.translatedText || 'Start chatting',
+          name: isGroup ? conv.name || `${i18n.t('chats.group')} (${groupMemberCount})` : peer?.name || i18n.t('chats.unknown'),
+          language: isGroup ? `${i18n.t('chats.group')} · ${groupMemberCount}` : peer?.preferredLanguage || '-',
+          lastOriginal: last?.originalText || i18n.t('chats.noMessages'),
+          lastTranslated: last?.translatedText || i18n.t('chats.startChatting'),
           unread: 0,
           type: isGroup ? 'GROUP' : 'DIRECT',
         };
@@ -59,8 +60,8 @@ export default function ChatsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.welcomeText}>Hello,</Text>
-          <Text style={styles.userName}>{user?.name || 'User'}</Text>
+          <Text style={styles.welcomeText}>{i18n.t('chats.hello')}</Text>
+          <Text style={styles.userName}>{user?.name || i18n.t('chats.unknown')}</Text>
         </View>
         <Pressable style={styles.profileBtn} onPress={() => router.push('/(tabs)/profile')}>
           <View style={styles.avatarPlaceholder}>
@@ -79,7 +80,7 @@ export default function ChatsScreen() {
         <View style={styles.hero}>
           <View style={styles.heroContent}>
             <Text style={styles.title}>OneVoice</Text>
-            <Text style={styles.subtitle}>Speak any language, be understood instantly</Text>
+            <Text style={styles.subtitle}>{i18n.t('chats.subtitle')}</Text>
             <View style={styles.languagePill}>
               <Ionicons name="language" size={14} color={Colors.light.background} />
               <Text style={styles.languageLabel}>{user?.preferredLanguage || 'en'}</Text>
@@ -91,10 +92,10 @@ export default function ChatsScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Chats</Text>
+          <Text style={styles.sectionTitle}>{i18n.t('chats.recentChats')}</Text>
           {chats.length > 0 && (
             <Pressable onPress={() => router.push('/explore')}>
-              <Text style={styles.viewAllText}>New Chat</Text>
+              <Text style={styles.viewAllText}>{i18n.t('chats.newChat')}</Text>
             </Pressable>
           )}
         </View>
@@ -124,7 +125,7 @@ export default function ChatsScreen() {
             <View style={styles.chatInfo}>
               <View style={styles.chatRow}>
                 <Text style={styles.chatName} numberOfLines={1}>{chat.name}</Text>
-                <Text style={styles.chatTime}>Just now</Text>
+                <Text style={styles.chatTime}>{i18n.t('chats.justNow')}</Text>
               </View>
               <View style={styles.messageRow}>
                 <View style={styles.messageContainer}>
@@ -144,9 +145,9 @@ export default function ChatsScreen() {
         {!chats.length && !loading ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubble-ellipses-outline" size={64} color="#cbd5e1" />
-            <Text style={styles.emptyText}>No conversations yet.</Text>
+            <Text style={styles.emptyText}>{i18n.t('chats.noConversations')}</Text>
             <Pressable style={styles.startChatBtn} onPress={() => router.push('/explore')}>
-              <Text style={styles.startChatText}>Start a conversation</Text>
+              <Text style={styles.startChatText}>{i18n.t('chats.startConversation')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -385,3 +386,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 });
+
+
+
