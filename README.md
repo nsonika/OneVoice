@@ -10,15 +10,17 @@ People travel, work, and collaborate across languages. In real chats, users natu
 
 ## Core Features
 
-- Real-time text translation in direct and group chats
-- Group chat creation and multi-member multilingual conversations
-- Real-time voice flow: record -> STT -> translate -> TTS
-- Automatic language detection
-- Hinglish-friendly translation behavior
-- User-level preferred language at signup/profile
-- Per-user message delivery based on target language
-- UI localization (English, Hindi, Tamil, Telugu, Kannada)
-- Audio file storage in Cloudinary
+## Core Features
+
+- Real-time translation for both 1:1 and group chats  
+- Group chat creation with multilingual participants  
+- Voice messaging pipeline: record -> transcribe (STT) -> translate -> synthesize (TTS)  
+- Automatic source-language detection (no manual language selection)  
+- Hinglish-aware handling for mixed-language input  
+- User preferred language captured at signup and editable in profile  
+- Per-recipient delivery in each user’s target language  
+- Localized app UI (English, Hindi, Tamil, Telugu)  
+- Cloudinary-based storage for voice/audio assets
 
 ## Tech Stack
 
@@ -172,8 +174,6 @@ Then open with Expo (Android/iOS/web).
 - UI language follows logged-in user's `preferredLanguage`
 
 ## Current Status
-
-This repository is optimized for hackathon demo speed and real-time UX.
 
 Potential next steps:
 
