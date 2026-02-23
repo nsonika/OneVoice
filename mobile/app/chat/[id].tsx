@@ -162,7 +162,7 @@ export default function ChatRoomScreen() {
   async function handlePlayVoice(msg: ChatMessage) {
     try {
       setError('');
-      let source = msg.translatedAudioUrl || '';
+      let source = msg.fromMe ? msg.originalAudioUrl || '' : msg.translatedAudioUrl || '';
 
       if (!source && msg.audioBase64) {
         source = msg.audioBase64.startsWith('data:')
@@ -353,8 +353,14 @@ export default function ChatRoomScreen() {
                 <Text style={styles.playVoiceText}>Play voice</Text>
               </Pressable>
             ) : null}
-            <Text style={styles.original}>{msg.original}</Text>
-            <Text style={styles.translated}>{msg.translated}</Text>
+            {msg.fromMe ? (
+              <Text style={styles.translated}>{msg.original}</Text>
+            ) : (
+              <>
+                <Text style={styles.original}>{msg.original}</Text>
+                <Text style={styles.translated}>{msg.translated}</Text>
+              </>
+            )}
           </View>
         ))}
       </ScrollView>
